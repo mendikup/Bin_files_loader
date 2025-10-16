@@ -1,2 +1,2 @@
-flet>=0.28.3
-pydantic>=2.7
+flet==0.28.3
+pydantic==2.8.2

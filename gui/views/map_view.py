@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 from typing import List
 
 import flet as ft
 import flet.map as ftm
 
-from drone_flet_basic.src.business_logic.models import FlightPoint
-from drone_flet_basic.src.gui.state import STATE
+from business_logic.models import FlightPoint
+from gui.state import STATE
 
 
 def _polyline_layer(points: List[FlightPoint]) -> ftm.PolylineLayer:
@@ -14,16 +15,14 @@ def _polyline_layer(points: List[FlightPoint]) -> ftm.PolylineLayer:
     return ftm.PolylineLayer(
         polylines=[
             ftm.PolylineMarker(
-                coordinates=[
-                    ftm.MapLatitudeLongitude(p.lat, p.lon) for p in points
-                ]
+                coordinates=[ftm.MapLatitudeLongitude(p.lat, p.lon) for p in points]
             )
         ]
     )
 
 
 class MapView(ft.Container):
-    """Display the flight path on OpenStreetMap tiles using Flet 0.27.3."""
+    """Display the loaded coordinates on top of OpenStreetMap tiles."""
 
     def __init__(self):
         super().__init__()
@@ -40,26 +39,20 @@ class MapView(ft.Container):
             for p in points[:: max(1, len(points) // 200)]
         ]
 
-        marker_layer = ftm.MarkerLayer(markers=markers)
-
         the_map = ftm.Map(
             expand=True,
+            initial_center=ftm.MapLatitudeLongitude(center_lat, center_lon),
+            initial_zoom=12,
             layers=[
-                ftm.TileLayer(
-                    url_template="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                ),
+                ftm.TileLayer(url_template="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"),
                 _polyline_layer(points),
-                marker_layer,
+                ftm.MarkerLayer(markers=markers),
             ],
         )
 
-        # 🔹 הגדרה של זום ומרכז
-        the_map.initial_center = ftm.MapLatitudeLongitude(center_lat, center_lon)
-        the_map.initial_zoom = 12
-
         self.content = ft.Column(
             [
-                ft.Text("Flight Path", size=22, weight=ft.FontWeight.BOLD),
+                ft.Text("נתיב הטיסה", size=22, weight=ft.FontWeight.BOLD),
                 ft.Container(the_map, expand=True),
             ],
             expand=True,
