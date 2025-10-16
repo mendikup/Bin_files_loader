@@ -28,14 +28,14 @@ from business_logic.models import FlightPoint
 MINIMUM_FIELDS = 4
 
 
-def parse_ardupilot_bin(path: Path) -> Iterator[FlightPoint]:
-    """Yield :class:`FlightPoint` objects from an ArduPilot ``.BIN`` log file.
+from pathlib import Path
+from typing import Iterator
+from pymavlink import mavutil
+from business_logic.models import FlightPoint
 
-    Only ``GPS`` messages are consumed because they contain the location and
-    altitude information that we want to draw on the map.  The units reported
-    by ArduPilot differ from the ones used in the user interface, therefore the
-    parser normalises them before yielding.
-    """
+
+def parse_ardupilot_bin(path: Path) -> Iterator[FlightPoint]:
+    """Yield FlightPoint objects from an ArduPilot .BIN log file."""
 
     if not path.exists():
         raise FileNotFoundError(f"Flight log not found: {path}")
@@ -47,26 +47,44 @@ def parse_ardupilot_bin(path: Path) -> Iterator[FlightPoint]:
         )
 
     log = mavutil.mavlink_connection(str(path))
+    gps_count = 0  # דיבוג – כמה הודעות GPS זוהו
+    total_msgs = 0
+
     try:
         while True:
-            message = log.recv_match(blocking=False)
+            message = log.recv_match(blocking=True)
             if message is None:
                 break
 
-            if message.get_type() != "GPS":
+            total_msgs += 1
+            msg_type = message.get_type()
+
+            # נבדוק אם זו הודעת GPS כלשהי
+            if not msg_type.startswith("GPS"):
                 continue
 
+            gps_count += 1
+            lat = message.Lat
+            lon = message.Lng
+            alt = message.Alt / 100.0
+            ts = message.TimeUS / 1e6
+
+            # הדפסות דיבוג
+            if gps_count < 5:  # רק כמה ראשונות
+                print(f"Raw Lat/Lng: {message.Lat}, {message.Lng}")
             yield FlightPoint(
-                lat=message.Lat / 1e7,
-                lon=message.Lng / 1e7,
-                alt=message.Alt / 100.0,
-                ts=message.TimeUS / 1e6,
+                lat=lat,
+                lon=lon,
+                alt=alt,
+                ts=ts,
                 roll=0.0,
                 pitch=0.0,
                 yaw=0.0,
             )
+
     finally:
         log.close()
+        print(f"[DEBUG] Total messages read: {total_msgs}, GPS messages: {gps_count}")
 
 
 def parse_text_lines(path: Path, delimiter: str = ",") -> Iterable[FlightPoint]:

@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import flet as ft
 
 from gui.state import STATE
@@ -17,6 +16,7 @@ def main(page: ft.Page) -> None:
     page.vertical_alignment = ft.MainAxisAlignment.START
 
     def show_home() -> None:
+        print("[DEBUG] ⏪ חוזרים למסך הבית")
         STATE.clear()
         page.views.clear()
         page.views.append(
@@ -29,6 +29,7 @@ def main(page: ft.Page) -> None:
         page.update()
 
     def show_map() -> None:
+        print(f"[DEBUG] 🗺️ מציג מפה עם {len(STATE.points)} נקודות")
         page.views.clear()
         page.views.append(
             ft.View(
@@ -48,3 +49,4 @@ def main(page: ft.Page) -> None:
 
 if __name__ == "__main__":
     ft.app(target=main, view=ft.AppView.FLET_APP)
+
