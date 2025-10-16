@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from business_logic.bin_parser import parse_ardupilot_bin, parse_text_lines
+from src.business_logic import parse_ardupilot_bin, parse_text_lines
 
 
 class _DummyMessage:
