@@ -37,11 +37,15 @@ def parse_ardupilot_bin(
 
     try:
         while True:
-            message = log.recv_match(blocking=False)
+            # הקוד המקורי השתמש ב-blocking=False וסינן אחרי כן.
+            # אנו משתמשים ב-type="GPS" כפי שהצעת.
+            message = log.recv_match(type="GPS", blocking=False)
             if message is None:
                 break
 
-            if hasattr(message, "get_type") and message.get_type() != "GPS":
+            # 🆕 סינון נקודות לא אמינות: נשתמש רק ב-GPS הראשי (Instance 0)
+            # השדה Instance (I) קיים רק בחלק מההודעות
+            if hasattr(message, 'I') and message.I != 0:
                 continue
 
             count += 1
@@ -68,7 +72,6 @@ def parse_ardupilot_bin(
             )
     finally:
         log.close()
-
 def parse_text_csv(path: Path, delimiter: str = ",") -> Iterator[FlightPoint]:
     """
     Parse simple CSV text file into FlightPoint objects.

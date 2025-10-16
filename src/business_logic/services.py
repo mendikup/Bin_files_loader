@@ -25,6 +25,8 @@ def calculate_center(points: List[FlightPoint]) -> tuple[float, float]:
     if not points:
         return 0.0, 0.0
 
+    print(f"DEBUG: First point is: Lat={points[0].lat}, Lon={points[0].lon}")
+
     avg_lat = sum(p.lat for p in points) / len(points)
     avg_lon = sum(p.lon for p in points) / len(points)
 

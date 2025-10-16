@@ -15,8 +15,12 @@ class MapView(ft.Container):
         self._points = points
         self._source_file = source_file
 
+
+
         # Center of the map
         center_lat, center_lon = calculate_center(self._points)
+
+        sampled_polyline_points = self._points[::10]
 
         # Polyline layer (trajectory)
         polyline_layer = map.PolylineLayer(
@@ -24,8 +28,7 @@ class MapView(ft.Container):
                 map.PolylineMarker(
                     coordinates=[
                         map.MapLatitudeLongitude(p.lat, p.lon)
-                        for p in self._points
-                    ],
+                        for p in sampled_polyline_points                    ],
                     border_stroke_width=3,
                     border_color=ft.Colors.BLUE,
                     color=ft.Colors.with_opacity(0.6, ft.Colors.BLUE),
@@ -34,10 +37,10 @@ class MapView(ft.Container):
         )
 
         # Marker sampling for performance
-        sample_interval = max(1, len(self._points) // 200)
+        sample_interval = max(1, len(self._points) // 400)
         markers = [
             map.Marker(
-                content=ft.Icon(ft.Icons.LOCATION_ON, color=ft.Colors.RED, size=10),
+                content=ft.Icon(ft.Icons.LOCATION_ON, color=ft.Colors.RED, size=18),
                 coordinates=map.MapLatitudeLongitude(p.lat, p.lon),
             )
             for p in self._points[::sample_interval]
@@ -66,6 +69,7 @@ class MapView(ft.Container):
             expand=True,
             initial_center=map.MapLatitudeLongitude(center_lat, center_lon),
             initial_zoom=13.0,
+            height=700,
             interaction_configuration=map.MapInteractionConfiguration(
                 flags=map.MapInteractiveFlag.ALL
             ),
