@@ -37,17 +37,32 @@ def parse_ardupilot_bin(
 
     try:
         while True:
-            message = log.recv_match(type="GPS", blocking=False)
+            message = log.recv_match(blocking=False)
             if message is None:
                 break
+
+            if hasattr(message, "get_type") and message.get_type() != "GPS":
+                continue
 
             count += 1
             if progress_callback and count % 500 == 0:
                 progress_callback(count)
 
+            lat = message.Lat
+            lon = message.Lng
+
+            # Older ArduPilot logs store coordinates scaled by 1e7 while
+            # some adapters already provide decimal degrees.  Normalise here so
+            # downstream components (e.g. the map view) always receive values
+            # in degrees and stay within the valid ±90/±180 ranges.
+            if abs(lat) > 90:
+                lat /= 1e7
+            if abs(lon) > 180:
+                lon /= 1e7
+
             yield FlightPoint(
-                lat=message.Lat / 1e7,
-                lon=message.Lng / 1e7,
+                lat=lat,
+                lon=lon,
                 alt=message.Alt / 100.0,
                 ts=message.TimeUS / 1e6,
             )
