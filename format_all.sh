@@ -1,5 +1,8 @@
 #!/bin/bash
 echo "🧹 Formatting and sorting imports..."
-isort src --line-length 120
-black src --line-length 120
+
+# הפעל את הכלים דרך הנתיב המלא בתוך ה-venv
+python -m isort src
+python -m black src
+
 echo "✅ Done formatting!"

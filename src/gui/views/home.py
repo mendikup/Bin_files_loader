@@ -1,7 +1,5 @@
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import flet as ft
 
@@ -24,7 +22,7 @@ class HomeView(ft.Container):
         self._loading = LoadingIndicator()
         self._file_picker = ft.FilePicker(on_result=self._handle_file_picked)
         self._page.overlay.append(self._file_picker)
-        self._current_path: Path | None = None
+        self._current_path: Optional[Path] = None
 
         # UI
         self.content = ft.Column(
@@ -58,6 +56,7 @@ class HomeView(ft.Container):
             return
 
         self._current_path = Path(event.files[0].path)
+        # run_thread will execute _load_file_in_thread in a background thread.
         self._page.run_thread(self._load_file_in_thread)
 
     def _on_progress(self, count: int) -> None:
@@ -67,6 +66,7 @@ class HomeView(ft.Container):
 
     def _load_file_in_thread(self) -> None:
         """Load file in a background thread (safe)."""
+
         if not self._current_path:
             return
 
@@ -74,11 +74,10 @@ class HomeView(ft.Container):
         self._page.update()
 
         try:
-            # Run heavy I/O safely
-            with ThreadPoolExecutor() as pool:
-                points = pool.submit(
-                    load_flight_log, self._current_path, self._on_progress
-                ).result()
+            # page.run_thread already runs this method in a background thread,
+            # so calling load_flight_log directly here is sufficient and avoids
+            # creating an unnecessary ThreadPoolExecutor.
+            points = load_flight_log(self._current_path, self._on_progress)
 
             self._loading.set_message(f"✅ Loaded {len(points)} points")
             self._page.update()
@@ -86,9 +85,12 @@ class HomeView(ft.Container):
             import time
             time.sleep(0.6)
 
+            # Call the provided callback on the main thread — the caller will
+            # handle navigation/update accordingly.
             self._on_loaded(points, self._current_path)
 
         except Exception as e:
+            # Hide loading UI and show an error dialog with retry support.
             self._loading.hide()
             self._page.update()
             ErrorDialog.show(

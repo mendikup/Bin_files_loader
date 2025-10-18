@@ -1,11 +1,15 @@
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Iterator, Callable, Optional
+from typing import Callable, Iterator, Optional
 
+# NOTE:
+# - Do NOT fall back to a fake SimpleNamespace for `pymavlink`.
+# - If pymavlink is not installed we set mavutil = None and raise a clear error
+#   at runtime. This avoids confusing AttributeError later when trying to call
+#   mavutil.mavlink_connection on a fake object.
 try:
     from pymavlink import mavutil
 except ModuleNotFoundError:
-    mavutil = SimpleNamespace()
+    mavutil = None
 
 from src.business_logic.models import FlightPoint
 
@@ -17,34 +21,32 @@ def parse_ardupilot_bin(
     """
     Parse ArduPilot .BIN file and yield FlightPoint objects.
 
-    Extracts GPS messages and converts units:
-    - Lat/Lon: from int (1e7 scale) to decimal degrees
-    - Altitude: from centimeters to meters
-    - Time: from microseconds to seconds
-
-    Args:
-        path: Path to .BIN flight log file
-        progress_callback: Optional function to report progress (count)
-
-    Yields:
-        FlightPoint objects for each GPS record.
+    Changes made:
+    - If pymavlink is missing, raise ModuleNotFoundError with a clear message
+      instead of silently failing later.
+    - Keep the logic otherwise intact (normalization of coordinates, filtering).
     """
     if not path.exists():
         raise FileNotFoundError(f"Flight log not found: {path}")
+
+    if mavutil is None:
+        # Clear, actionable message for the user/developer.
+        raise ModuleNotFoundError(
+            "pymavlink is required to parse .BIN ArduPilot logs. "
+            "Please install it: pip install pymavlink"
+        )
 
     log = mavutil.mavlink_connection(str(path))
     count = 0
 
     try:
         while True:
-            # הקוד המקורי השתמש ב-blocking=False וסינן אחרי כן.
-            # אנו משתמשים ב-type="GPS" כפי שהצעת.
+            # Use message type filter to get only GPS messages.
             message = log.recv_match(type="GPS", blocking=False)
             if message is None:
                 break
 
-            # 🆕 סינון נקודות לא אמינות: נשתמש רק ב-GPS הראשי (Instance 0)
-            # השדה Instance (I) קיים רק בחלק מההודעות
+            # Filter out non-primary GPS instances when available.
             if hasattr(message, 'I') and message.I != 0:
                 continue
 
@@ -55,10 +57,7 @@ def parse_ardupilot_bin(
             lat = message.Lat
             lon = message.Lng
 
-            # Older ArduPilot logs store coordinates scaled by 1e7 while
-            # some adapters already provide decimal degrees.  Normalise here so
-            # downstream components (e.g. the map view) always receive values
-            # in degrees and stay within the valid ±90/±180 ranges.
+            # Normalize older logs which store lat/lon as int (scale 1e7).
             if abs(lat) > 90:
                 lat /= 1e7
             if abs(lon) > 180:
@@ -72,12 +71,18 @@ def parse_ardupilot_bin(
             )
     finally:
         log.close()
+
+
 def parse_text_csv(path: Path, delimiter: str = ",") -> Iterator[FlightPoint]:
     """
     Parse simple CSV text file into FlightPoint objects.
 
     Expected format per line: lat,lon,alt,timestamp
     Lines starting with # are treated as comments.
+
+    Note:
+    - Keeps previous behavior (raises ValueError on malformed numeric fields).
+    - Could be extended with a `strict` flag to skip bad lines instead of failing.
     """
     if not path.exists():
         raise FileNotFoundError(f"Flight log not found: {path}")

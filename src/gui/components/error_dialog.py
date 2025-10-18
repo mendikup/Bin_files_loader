@@ -1,5 +1,6 @@
+from typing import Callable, Optional
+
 import flet as ft
-from typing import Optional, Callable
 
 
 class ErrorDialog:
