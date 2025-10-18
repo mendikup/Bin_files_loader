@@ -1,12 +1,21 @@
+import logging
 from pathlib import Path
 from typing import List
 
-from src.business_logic.models import FlightPoint
 from src.business_logic.bin_parser import parse_ardupilot_bin, parse_text_csv
+from src.business_logic.models import FlightPoint
+
+logger = logging.getLogger(__name__)
 
 
 def load_flight_log(path: Path, progress_callback=None) -> List[FlightPoint]:
-    """Load flight log with optional progress reporting."""
+    """Load flight log with optional progress reporting.
+
+    Note:
+    - Keeps the original behavior of returning a list of FlightPoint.
+    - Consider adding a streaming mode in the future to avoid loading very
+      large logs fully into memory.
+    """
     if path.suffix.lower() == ".bin":
         points = list(parse_ardupilot_bin(path, progress_callback))
     else:
@@ -25,7 +34,8 @@ def calculate_center(points: List[FlightPoint]) -> tuple[float, float]:
     if not points:
         return 0.0, 0.0
 
-    print(f"DEBUG: First point is: Lat={points[0].lat}, Lon={points[0].lon}")
+    # Use logging instead of print so the output can be controlled externally.
+    logger.debug("First point is: Lat=%s, Lon=%s", points[0].lat, points[0].lon)
 
     avg_lat = sum(p.lat for p in points) / len(points)
     avg_lon = sum(p.lon for p in points) / len(points)
