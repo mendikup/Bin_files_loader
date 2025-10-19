@@ -1,12 +1,13 @@
-import logging
 from typing import List, Tuple
+import logging
+
 from src.business_logic.models import FlightPoint
 
 logger = logging.getLogger(__name__)
 
 
 def calculate_center(points: List[FlightPoint]) -> Tuple[float, float]:
-    """Calculate geographic center of flight path."""
+    """Calculate the geographic center (average lat/lon) of the flight path points."""
     if not points:
         return 0.0, 0.0
 
@@ -15,3 +16,5 @@ def calculate_center(points: List[FlightPoint]) -> Tuple[float, float]:
 
     logger.debug("Center calculated: (%.6f, %.6f)", avg_lat, avg_lon)
     return avg_lat, avg_lon
+
+

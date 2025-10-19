@@ -2,14 +2,14 @@ import flet as ft
 
 
 class LoadingIndicator(ft.Container):
-    """Shows a spinner with status message during async operations."""
+    """Shows a spinner with a status message during async operations."""
 
     def __init__(self):
         super().__init__()
         self._message = ft.Text(value="", size=14)
         self._spinner = ft.ProgressRing(width=40, height=40, visible=False)
 
-        # התוכן הראשי של הרכיב
+        # The main content of the component
         self.content = ft.Column(
             [self._spinner, self._message],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -19,7 +19,7 @@ class LoadingIndicator(ft.Container):
         self.alignment = ft.alignment.center
 
     def show(self, message: str) -> None:
-        """Display spinner with given message."""
+        """Display spinner with the given message."""
         self._message.value = message
         self._spinner.visible = True
         self.update()

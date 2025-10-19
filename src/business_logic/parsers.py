@@ -3,34 +3,30 @@ from typing import Callable, Iterator, Optional
 
 # NOTE:
 # - Do NOT fall back to a fake SimpleNamespace for `pymavlink`.
-# - If pymavlink is not installed we set mavutil = None and raise a clear error
-#   at runtime. This avoids confusing AttributeError later when trying to call
-#   mavutil.mavlink_connection on a fake object.
 try:
     from pymavlink import mavutil
 except ModuleNotFoundError:
     mavutil = None
 
 from src.business_logic.models import FlightPoint
+# Import configuration constants
+from src.config import (
+    GPS_NORM_SCALE_FACTOR,
+    ALTITUDE_DIVISOR,
+    TIMESTAMP_DIVISOR,
+    GPS_PROGRESS_REPORT_INTERVAL,
+)
 
 
 def parse_ardupilot_bin(
         path: Path,
         progress_callback: Optional[Callable[[int], None]] = None,
 ) -> Iterator[FlightPoint]:
-    """
-    Parse ArduPilot .BIN file and yield FlightPoint objects.
-
-    Changes made:
-    - If pymavlink is missing, raise ModuleNotFoundError with a clear message
-      instead of silently failing later.
-    - Keep the logic otherwise intact (normalization of coordinates, filtering).
-    """
+    """Parse ArduPilot .BIN file and yield FlightPoint objects from GPS messages."""
     if not path.exists():
         raise FileNotFoundError(f"Flight log not found: {path}")
 
     if mavutil is None:
-        # Clear, actionable message for the user/developer.
         raise ModuleNotFoundError(
             "pymavlink is required to parse .BIN ArduPilot logs. "
             "Please install it: pip install pymavlink"
@@ -51,7 +47,7 @@ def parse_ardupilot_bin(
                 continue
 
             count += 1
-            if progress_callback and count % 500 == 0:
+            if progress_callback and count % GPS_PROGRESS_REPORT_INTERVAL == 0:
                 progress_callback(count)
 
             lat = message.Lat
@@ -59,15 +55,15 @@ def parse_ardupilot_bin(
 
             # Normalize older logs which store lat/lon as int (scale 1e7).
             if abs(lat) > 90:
-                lat /= 1e7
+                lat /= GPS_NORM_SCALE_FACTOR
             if abs(lon) > 180:
-                lon /= 1e7
+                lon /= GPS_NORM_SCALE_FACTOR
 
             yield FlightPoint(
                 lat=lat,
                 lon=lon,
-                alt=message.Alt / 100.0,
-                ts=message.TimeUS / 1e6,
+                alt=message.Alt / ALTITUDE_DIVISOR,
+                ts=message.TimeUS / TIMESTAMP_DIVISOR,
             )
     finally:
         log.close()
@@ -76,13 +72,7 @@ def parse_ardupilot_bin(
 def parse_text_csv(path: Path, delimiter: str = ",") -> Iterator[FlightPoint]:
     """
     Parse simple CSV text file into FlightPoint objects.
-
-    Expected format per line: lat,lon,alt,timestamp
-    Lines starting with # are treated as comments.
-
-    Note:
-    - Keeps previous behavior (raises ValueError on malformed numeric fields).
-    - Could be extended with a `strict` flag to skip bad lines instead of failing.
+    Expected format per line: lat,lon,alt,timestamp.
     """
     if not path.exists():
         raise FileNotFoundError(f"Flight log not found: {path}")

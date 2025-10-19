@@ -13,13 +13,14 @@ class ErrorDialog:
             message: str,
             on_retry: Optional[Callable] = None
     ) -> None:
-        """Display error dialog with optional retry button.
+        """
+        Display error dialog with an optional retry button.
 
         Args:
-            page: The Flet page to show dialog on
-            title: Dialog title text
-            message: Error message details
-            on_retry: Optional callback for retry button
+            page: The Flet page to show dialog on.
+            title: Dialog title text.
+            message: Error message details.
+            on_retry: Optional callback for the retry button.
         """
 
         def close_dialog(e):

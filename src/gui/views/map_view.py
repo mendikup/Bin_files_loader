@@ -6,13 +6,22 @@ import flet as ft
 import flet_map as fmap
 
 from src.business_logic.models import FlightPoint
-from src.business_logic.services.calculations import calculate_center
+from src.business_logic.utils.calculate_center import calculate_center
+# Import configuration constants
+from src.config import (
+    MAP_INITIAL_ZOOM,
+    MAP_HEIGHT,
+    MAP_TILE_URL,
+    POLYLINE_SAMPLE_INTERVAL,
+    MARKER_MAX_COUNT
+)
+
 
 logger = logging.getLogger(__name__)
 
 
 class MapView(ft.Container):
-    """Interactive map showing flight path with trajectory and markers."""
+    """Interactive map showing the flight path, markers, and statistics."""
 
     def __init__(self, points: List[FlightPoint], source_file: Path):
         super().__init__()
@@ -22,7 +31,9 @@ class MapView(ft.Container):
         # Center of the map
         center_lat, center_lon = calculate_center(self._points)
 
-        sampled_polyline_points = self._points[::10]
+        # Use config for sampling
+        sample_interval_polyline = POLYLINE_SAMPLE_INTERVAL
+        sampled_polyline_points = self._points[::sample_interval_polyline]
 
         # Polyline layer (trajectory)
         polyline_layer = fmap.PolylineLayer(
@@ -40,7 +51,7 @@ class MapView(ft.Container):
         )
 
         # Marker sampling for performance
-        sample_interval = max(1, len(self._points) // 400)
+        sample_interval = max(1, len(self._points) // MARKER_MAX_COUNT)
         markers = [
             fmap.Marker(
                 content=ft.Icon(ft.Icons.LOCATION_ON, color=ft.Colors.RED, size=18),
@@ -71,14 +82,14 @@ class MapView(ft.Container):
         the_map = fmap.Map(
             expand=True,
             initial_center=fmap.MapLatitudeLongitude(center_lat, center_lon),
-            initial_zoom=13.0,
-            height=700,
+            initial_zoom=MAP_INITIAL_ZOOM,  # Use config
+            height=MAP_HEIGHT,              # Use config
             interaction_configuration=fmap.MapInteractionConfiguration(
                 flags=fmap.MapInteractiveFlag.ALL
             ),
             layers=[
                 fmap.TileLayer(
-                    url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    url_template=MAP_TILE_URL, # Use config
                     # use logging instead of print for tile errors
                     on_image_error=lambda e: logger.error("Tile error: %s", e),
                 ),

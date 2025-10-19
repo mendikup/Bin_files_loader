@@ -7,15 +7,7 @@ from src.gui.components.loading_indicator import LoadingIndicator
 
 
 class HomeView(ft.Container):
-    """Landing page with file picker for loading flight logs.
-
-    This view is intentionally thin: when a user picks a file it calls the provided
-    on_load_request(file_path: Path) callback. The AppManager will orchestrate
-    the actual loading and navigation.
-
-    Additionally, HomeView can register a progress-forwarder so it receives progress
-    updates and shows them in the LoadingIndicator.
-    """
+    """Landing page with file picker, delegates loading requests to the AppManager."""
 
     def __init__(
         self,
@@ -31,9 +23,8 @@ class HomeView(ft.Container):
         self._file_picker = ft.FilePicker(on_result=self._handle_file_picked)
         self._page.overlay.append(self._file_picker)
 
-        # Register progress forwarder (if provided) so LoadingIndicator receives updates on UI thread.
+        # Register progress forwarder so LoadingIndicator receives updates on the UI thread.
         if self._register_progress_forwarder:
-            # register our _on_progress method; note: AppManager will call with None to unregister.
             self._register_progress_forwarder(self._on_progress)
 
         # UI
@@ -62,7 +53,7 @@ class HomeView(ft.Container):
 
     # -------------------- Events --------------------
     def _handle_file_picked(self, event: ft.FilePickerResultEvent) -> None:
-        """Triggered when a file is selected; delegate to the AppManager (or calling coordinator)."""
+        """Triggered when a file is selected; shows loading and delegates the request."""
         if not event.files:
             return
 
@@ -76,6 +67,6 @@ class HomeView(ft.Container):
 
     # -------------------- Progress handler --------------------
     def _on_progress(self, count: int) -> None:
-        """Runs on the UI thread — update the loading indicator."""
+        """Runs on the UI thread; updates the loading indicator message."""
         self._loading.set_message(f"📡 Loaded {count:,} points...")
         self._page.update()
