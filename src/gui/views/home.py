@@ -7,27 +7,25 @@ from src.gui.components.loading_indicator import LoadingIndicator
 
 
 class HomeView(ft.Container):
-    """Landing page with file picker, delegates loading requests to the AppManager."""
+    """Home screen with a file picker and progress feedback."""
 
     def __init__(
         self,
         page: ft.Page,
         on_load_request: Callable[[Path], None],
-        register_progress_forwarder: Optional[Callable[[Optional[Callable[[int], None]]], None]] = None,
+        set_progress_listener: Optional[Callable[[Optional[Callable[[int], None]]], None]] = None,
     ):
         super().__init__()
         self._page = page
         self._on_load_request = on_load_request
-        self._register_progress_forwarder = register_progress_forwarder
+        self._set_progress_listener = set_progress_listener
         self._loading = LoadingIndicator()
         self._file_picker = ft.FilePicker(on_result=self._handle_file_picked)
         self._page.overlay.append(self._file_picker)
 
-        # Register progress forwarder so LoadingIndicator receives updates on the UI thread.
-        if self._register_progress_forwarder:
-            self._register_progress_forwarder(self._on_progress)
+        if self._set_progress_listener:
+            self._set_progress_listener(self._on_progress)
 
-        # UI
         self.content = ft.Column(
             [
                 ft.Icon(ft.Icons.FLIGHT, size=80, color=ft.Colors.BLUE),
@@ -51,22 +49,18 @@ class HomeView(ft.Container):
         self.expand = True
         self.alignment = ft.alignment.center
 
-    # -------------------- Events --------------------
     def _handle_file_picked(self, event: ft.FilePickerResultEvent) -> None:
-        """Triggered when a file is selected; shows loading and delegates the request."""
+        """Handle a successful pick by showing progress and delegating the load."""
         if not event.files:
             return
 
         file_path = Path(event.files[0].path)
-        # show loading UI immediately (message will be updated by progress callbacks)
         self._loading.show(f"Loading {file_path.name}...")
         self._page.update()
 
-        # delegate orchestration to the coordinator
         self._on_load_request(file_path)
 
-    # -------------------- Progress handler --------------------
     def _on_progress(self, count: int) -> None:
-        """Runs on the UI thread; updates the loading indicator message."""
+        """Update the loading message from UI-thread callbacks."""
         self._loading.set_message(f"📡 Loaded {count:,} points...")
         self._page.update()

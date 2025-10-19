@@ -4,30 +4,22 @@ import flet as ft
 
 
 class ErrorDialog:
-    """Static helper for showing error dialogs."""
+    """Utility helpers for showing error dialogs."""
 
     @staticmethod
     def show(
-            page: ft.Page,
-            title: str,
-            message: str,
-            on_retry: Optional[Callable] = None
+        page: ft.Page,
+        title: str,
+        message: str,
+        on_retry: Optional[Callable] = None,
     ) -> None:
-        """
-        Display error dialog with an optional retry button.
+        """Display a modal error message, optionally exposing a retry callback."""
 
-        Args:
-            page: The Flet page to show dialog on.
-            title: Dialog title text.
-            message: Error message details.
-            on_retry: Optional callback for the retry button.
-        """
-
-        def close_dialog(e):
+        def close_dialog(_: ft.ControlEvent) -> None:
             dialog.open = False
             page.update()
 
-        def handle_retry(e):
+        def handle_retry(_: ft.ControlEvent) -> None:
             dialog.open = False
             page.update()
             if on_retry:
