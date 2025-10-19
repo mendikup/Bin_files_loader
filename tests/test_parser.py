@@ -57,7 +57,7 @@ def test_parse_ardupilot_bin(monkeypatch, tmp_path: Path) -> None:
         return log
 
     monkeypatch.setattr(
-        "business_logic.bin_parser.mavutil.mavlink_connection",
+        "src.business_logic.parsers.mavutil.mavlink_connection",
         fake_connection,
         raising=False,
     )

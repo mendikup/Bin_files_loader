@@ -20,9 +20,9 @@ def parse_ardupilot_bin(
     path: Path,
     progress_callback: Optional[Callable[[int], None]] = None,
 ) -> Iterator[FlightPoint]:
-    """Yield GPS samples from an ArduPilot .BIN log."""
+    """Yield GPS samples from an ArduPilot .BIN flight_log."""
     if not path.exists():
-        raise FileNotFoundError(f"Flight log not found: {path}")
+        raise FileNotFoundError(f"Flight flight_log not found: {path}")
 
     if mavutil is None:
         raise ModuleNotFoundError(
@@ -30,29 +30,30 @@ def parse_ardupilot_bin(
             "Please install it: pip install pymavlink"
         )
 
-    log = mavutil.mavlink_connection(str(path))
+    flight_log = mavutil.mavlink_connection(str(path))
     count = 0
 
     try:
         while True:
             try:
-                message = log.recv_match(type="GPS", blocking=False)
+
+                gps_message = flight_log.recv_match(type="GPS", blocking=False)
             except TypeError:
-                message = log.recv_match(blocking=False)
-                if message and getattr(message, "get_type", lambda: "")() != "GPS":
+                gps_message = flight_log.recv_match(blocking=False)
+                if gps_message and getattr(gps_message, "get_type", lambda: "")() != "GPS":
                     continue
-            if message is None:
+            if gps_message is None:
                 break
 
-            if getattr(message, "I", 1) != 1:
+            if getattr(gps_message, "I", 1) != 1:
                 continue
 
             count += 1
             if progress_callback and count % GPS_PROGRESS_REPORT_INTERVAL == 0:
                 progress_callback(count)
 
-            lat = message.Lat
-            lon = message.Lng
+            lat = gps_message.Lat
+            lon = gps_message.Lng
 
             if abs(lat) > 90:
                 lat /= GPS_NORM_SCALE_FACTOR
@@ -62,11 +63,11 @@ def parse_ardupilot_bin(
             yield FlightPoint(
                 lat=lat,
                 lon=lon,
-                alt=message.Alt / ALTITUDE_DIVISOR,
-                ts=message.TimeUS / TIMESTAMP_DIVISOR,
+                alt=gps_message.Alt / ALTITUDE_DIVISOR,
+                ts=gps_message.TimeUS / TIMESTAMP_DIVISOR,
             )
     finally:
-        log.close()
+        flight_log.close()
 
 
 def parse_text_csv(path: Path, delimiter: str = ",") -> Iterator[FlightPoint]:
