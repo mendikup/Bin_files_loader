@@ -1,47 +1,43 @@
+import logging
 from pathlib import Path
 from typing import List
-import logging
 
 import flet as ft
 import flet_map as fmap
 
 from src.business_logic.models import FlightPoint
 from src.business_logic.utils.calculate_center import calculate_center
-# Import configuration constants
-from src.config import (
-    MAP_INITIAL_ZOOM,
-    MAP_HEIGHT,
-    MAP_TILE_URL,
-    POLYLINE_SAMPLE_INTERVAL,
-    MARKER_MAX_COUNT
-)
+from src.config.config_loader import load_config
+
+MAP_INITIAL_ZOOM = 13.0
+MAP_HEIGHT = 700
+MARKER_MAX_COUNT = 400
+
+_MAP_CONFIG = load_config()
+MAP_TILE_URL = _MAP_CONFIG["MAP_TILE_URL"]
+POLYLINE_SAMPLE_INTERVAL = max(1, int(_MAP_CONFIG["POLYLINE_SAMPLE_INTERVAL"]))
 
 
 logger = logging.getLogger(__name__)
 
 
 class MapView(ft.Container):
-    """Interactive map showing the flight path, markers, and statistics."""
+    """Interactive map that renders the trajectory with contextual details."""
 
     def __init__(self, points: List[FlightPoint], source_file: Path):
         super().__init__()
         self._points = points
         self._source_file = source_file
 
-        # Center of the map
         center_lat, center_lon = calculate_center(self._points)
 
-        # Use config for sampling
-        sample_interval_polyline = POLYLINE_SAMPLE_INTERVAL
-        sampled_polyline_points = self._points[::sample_interval_polyline]
-
-        # Polyline layer (trajectory)
+        sampled_points = self._points[::POLYLINE_SAMPLE_INTERVAL]
         polyline_layer = fmap.PolylineLayer(
             polylines=[
                 fmap.PolylineMarker(
                     coordinates=[
-                        fmap.MapLatitudeLongitude(p.lat, p.lon)
-                        for p in sampled_polyline_points
+                        fmap.MapLatitudeLongitude(point.lat, point.lon)
+                        for point in sampled_points
                     ],
                     border_stroke_width=3,
                     border_color=ft.Colors.BLUE,
@@ -50,20 +46,17 @@ class MapView(ft.Container):
             ]
         )
 
-        # Marker sampling for performance
-        sample_interval = max(1, len(self._points) // MARKER_MAX_COUNT)
+        marker_step = max(1, len(self._points) // MARKER_MAX_COUNT)
         markers = [
             fmap.Marker(
                 content=ft.Icon(ft.Icons.LOCATION_ON, color=ft.Colors.RED, size=18),
-                coordinates=fmap.MapLatitudeLongitude(p.lat, p.lon),
+                coordinates=fmap.MapLatitudeLongitude(point.lat, point.lon),
             )
-            for p in self._points[::sample_interval]
+            for point in self._points[::marker_step]
         ]
 
-        # Start and end markers
         if self._points:
-            start = self._points[0]
-            end = self._points[-1]
+            start, end = self._points[0], self._points[-1]
             markers.insert(
                 0,
                 fmap.Marker(
@@ -78,34 +71,30 @@ class MapView(ft.Container):
                 )
             )
 
-        # Create map
-        the_map = fmap.Map(
+        flight_map = fmap.Map(
             expand=True,
             initial_center=fmap.MapLatitudeLongitude(center_lat, center_lon),
-            initial_zoom=MAP_INITIAL_ZOOM,  # Use config
-            height=MAP_HEIGHT,              # Use config
+            initial_zoom=MAP_INITIAL_ZOOM,
+            height=MAP_HEIGHT,
             interaction_configuration=fmap.MapInteractionConfiguration(
                 flags=fmap.MapInteractiveFlag.ALL
             ),
             layers=[
                 fmap.TileLayer(
-                    url_template=MAP_TILE_URL, # Use config
-                    # use logging instead of print for tile errors
-                    on_image_error=lambda e: logger.error("Tile error: %s", e),
+                    url_template=MAP_TILE_URL,
+                    on_image_error=lambda error: logger.error("Tile error: %s", error),
                 ),
                 polyline_layer,
                 fmap.MarkerLayer(markers=markers),
             ],
         )
 
-        # Stats info
-        # Guard min/max in case points become empty (defensive)
         if self._points:
             duration = self._points[-1].ts - self._points[0].ts if len(self._points) > 1 else 0
-            min_alt = min(p.alt for p in self._points)
-            max_alt = max(p.alt for p in self._points)
+            min_alt = min(point.alt for point in self._points)
+            max_alt = max(point.alt for point in self._points)
         else:
-            duration = 0
+            duration = 0.0
             min_alt = max_alt = 0.0
 
         stats_panel = ft.Container(
@@ -125,7 +114,6 @@ class MapView(ft.Container):
             border_radius=10,
         )
 
-        # Compose the final layout
         self.content = ft.Column(
             [
                 ft.Row(
@@ -136,7 +124,7 @@ class MapView(ft.Container):
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
-                ft.Container(the_map, expand=True, border_radius=10),
+                ft.Container(flight_map, expand=True, border_radius=10),
             ],
             expand=True,
             spacing=15,

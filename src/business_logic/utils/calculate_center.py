@@ -1,5 +1,5 @@
-from typing import List, Tuple
 import logging
+from typing import List, Tuple
 
 from src.business_logic.models import FlightPoint
 

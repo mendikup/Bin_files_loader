@@ -1,26 +1,20 @@
 import flet as ft
 
+from src.config.log_config import setup_logging
 from src.gui.app_manager import AppManager
-# Import configuration constants
-from src.config import APP_TITLE, WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, PAGE_PADDING
-# Import the new logging setup function
-from src.log_config import setup_logging
 
 
 def main(page: ft.Page) -> None:
-    """Initialize and run the Flet application."""
+    """Configure the page and start the GUI."""
 
-    # --- 1. SETUP LOGGING ---
     setup_logging()
 
-    page.title = APP_TITLE
-    page.padding = PAGE_PADDING
-    page.window_min_width = WINDOW_MIN_WIDTH
-    page.window_min_height = WINDOW_MIN_HEIGHT
+    page.title = "Flight Log Viewer"
+    page.padding = 1000
+    page.window_min_width = 700
+    page.window_min_height = 20
 
-    # Create and start the application manager (coordinator)
-    app = AppManager(page)
-    app.start_application_lifecycle()
+    AppManager(page).start_application_lifecycle()
 
 
 if __name__ == "__main__":

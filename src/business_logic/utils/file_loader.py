@@ -1,20 +1,21 @@
+import logging
 from pathlib import Path
 from typing import Callable, List
-import logging
-from src.business_logic.parsers import parse_ardupilot_bin, parse_text_csv
+
 from src.business_logic.models import FlightPoint
+from src.business_logic.parsers import parse_ardupilot_bin, parse_text_csv
 
 logger = logging.getLogger(__name__)
 
+
 def load_flight_file(
     path: Path,
-    progress_callback: Callable[[int], None] | None = None
+    progress_callback: Callable[[int], None] | None = None,
 ) -> List[FlightPoint]:
-    """Load flight log (.BIN or .CSV) using the appropriate parser and validate results."""
+    """Load a flight log with the matching parser and ensure it contains data."""
     if path.suffix.lower() == ".bin":
         points = list(parse_ardupilot_bin(path, progress_callback))
     else:
-        # CSV parsing does not support progress updates
         points = list(parse_text_csv(path))
 
     if not points:
