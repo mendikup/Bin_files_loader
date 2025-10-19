@@ -1,28 +1,40 @@
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
 import flet as ft
 
-from src.business_logic.models import FlightPoint
-from src.business_logic.services import load_flight_log
 from src.gui.components.loading_indicator import LoadingIndicator
-from src.gui.components.error_dialog import ErrorDialog
+
 
 class HomeView(ft.Container):
-    """Landing page with file picker for loading flight logs."""
+    """Landing page with file picker for loading flight logs.
+
+    This view is intentionally thin: when a user picks a file it calls the provided
+    on_load_request(file_path: Path) callback. The AppManager will orchestrate
+    the actual loading and navigation.
+
+    Additionally, HomeView can register a progress-forwarder so it receives progress
+    updates and shows them in the LoadingIndicator.
+    """
 
     def __init__(
         self,
         page: ft.Page,
-        on_loaded: Callable[[List[FlightPoint], Path], None]
+        on_load_request: Callable[[Path], None],
+        register_progress_forwarder: Optional[Callable[[Optional[Callable[[int], None]]], None]] = None,
     ):
         super().__init__()
         self._page = page
-        self._on_loaded = on_loaded
+        self._on_load_request = on_load_request
+        self._register_progress_forwarder = register_progress_forwarder
         self._loading = LoadingIndicator()
         self._file_picker = ft.FilePicker(on_result=self._handle_file_picked)
         self._page.overlay.append(self._file_picker)
-        self._current_path: Optional[Path] = None
+
+        # Register progress forwarder (if provided) so LoadingIndicator receives updates on UI thread.
+        if self._register_progress_forwarder:
+            # register our _on_progress method; note: AppManager will call with None to unregister.
+            self._register_progress_forwarder(self._on_progress)
 
         # UI
         self.content = ft.Column(
@@ -49,53 +61,21 @@ class HomeView(ft.Container):
         self.alignment = ft.alignment.center
 
     # -------------------- Events --------------------
-
     def _handle_file_picked(self, event: ft.FilePickerResultEvent) -> None:
-        """Triggered when a file is selected."""
+        """Triggered when a file is selected; delegate to the AppManager (or calling coordinator)."""
         if not event.files:
             return
 
-        self._current_path = Path(event.files[0].path)
-        # run_thread will execute _load_file_in_thread in a background thread.
-        self._page.run_thread(self._load_file_in_thread)
+        file_path = Path(event.files[0].path)
+        # show loading UI immediately (message will be updated by progress callbacks)
+        self._loading.show(f"Loading {file_path.name}...")
+        self._page.update()
 
+        # delegate orchestration to the coordinator
+        self._on_load_request(file_path)
+
+    # -------------------- Progress handler --------------------
     def _on_progress(self, count: int) -> None:
-        """Called periodically from parser to report progress."""
+        """Runs on the UI thread — update the loading indicator."""
         self._loading.set_message(f"📡 Loaded {count:,} points...")
         self._page.update()
-
-    def _load_file_in_thread(self) -> None:
-        """Load file in a background thread (safe)."""
-
-        if not self._current_path:
-            return
-
-        self._loading.show(f"Loading {self._current_path.name}...")
-        self._page.update()
-
-        try:
-            # page.run_thread already runs this method in a background thread,
-            # so calling load_flight_log directly here is sufficient and avoids
-            # creating an unnecessary ThreadPoolExecutor.
-            points = load_flight_log(self._current_path, self._on_progress)
-
-            self._loading.set_message(f"✅ Loaded {len(points)} points")
-            self._page.update()
-
-            import time
-            time.sleep(0.6)
-
-            # Call the provided callback on the main thread — the caller will
-            # handle navigation/update accordingly.
-            self._on_loaded(points, self._current_path)
-
-        except Exception as e:
-            # Hide loading UI and show an error dialog with retry support.
-            self._loading.hide()
-            self._page.update()
-            ErrorDialog.show(
-                page=self._page,
-                title="Failed to Load File",
-                message=str(e),
-                on_retry=lambda: self._page.run_thread(self._load_file_in_thread),
-            )

@@ -3,11 +3,10 @@ from typing import List
 import logging
 
 import flet as ft
-# Avoid shadowing builtin `map` name — use a clearer alias.
 import flet_map as fmap
 
 from src.business_logic.models import FlightPoint
-from src.business_logic.services import calculate_center
+from src.business_logic.services.calculations import calculate_center
 
 logger = logging.getLogger(__name__)
 

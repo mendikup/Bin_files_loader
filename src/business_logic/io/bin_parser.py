@@ -47,7 +47,7 @@ def parse_ardupilot_bin(
                 break
 
             # Filter out non-primary GPS instances when available.
-            if hasattr(message, 'I') and message.I != 0:
+            if getattr(message, 'I') !=1:
                 continue
 
             count += 1
