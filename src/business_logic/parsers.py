@@ -9,20 +9,18 @@ except ModuleNotFoundError:
     mavutil = None
 
 from src.business_logic.models import FlightPoint
-# Import configuration constants
-from src.config import (
-    GPS_NORM_SCALE_FACTOR,
-    ALTITUDE_DIVISOR,
-    TIMESTAMP_DIVISOR,
-    GPS_PROGRESS_REPORT_INTERVAL,
-)
+
+GPS_NORM_SCALE_FACTOR = 1e7
+ALTITUDE_DIVISOR = 100.0
+TIMESTAMP_DIVISOR = 1e6
+GPS_PROGRESS_REPORT_INTERVAL = 500
 
 
 def parse_ardupilot_bin(
-        path: Path,
-        progress_callback: Optional[Callable[[int], None]] = None,
+    path: Path,
+    progress_callback: Optional[Callable[[int], None]] = None,
 ) -> Iterator[FlightPoint]:
-    """Parse ArduPilot .BIN file and yield FlightPoint objects from GPS messages."""
+    """Yield GPS samples from an ArduPilot .BIN log."""
     if not path.exists():
         raise FileNotFoundError(f"Flight log not found: {path}")
 
@@ -37,13 +35,16 @@ def parse_ardupilot_bin(
 
     try:
         while True:
-            # Use message type filter to get only GPS messages.
-            message = log.recv_match(type="GPS", blocking=False)
+            try:
+                message = log.recv_match(type="GPS", blocking=False)
+            except TypeError:
+                message = log.recv_match(blocking=False)
+                if message and getattr(message, "get_type", lambda: "")() != "GPS":
+                    continue
             if message is None:
                 break
 
-            # Filter out non-primary GPS instances when available.
-            if getattr(message, 'I') !=1:
+            if getattr(message, "I", 1) != 1:
                 continue
 
             count += 1
@@ -53,7 +54,6 @@ def parse_ardupilot_bin(
             lat = message.Lat
             lon = message.Lng
 
-            # Normalize older logs which store lat/lon as int (scale 1e7).
             if abs(lat) > 90:
                 lat /= GPS_NORM_SCALE_FACTOR
             if abs(lon) > 180:
@@ -70,10 +70,7 @@ def parse_ardupilot_bin(
 
 
 def parse_text_csv(path: Path, delimiter: str = ",") -> Iterator[FlightPoint]:
-    """
-    Parse simple CSV text file into FlightPoint objects.
-    Expected format per line: lat,lon,alt,timestamp.
-    """
+    """Parse a simple CSV file into ``FlightPoint`` objects."""
     if not path.exists():
         raise FileNotFoundError(f"Flight log not found: {path}")
 
