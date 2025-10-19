@@ -1,6 +1,10 @@
+import logging
 from typing import Callable, Optional
 
 import flet as ft
+
+
+logger = logging.getLogger(__name__)
 
 
 class ErrorDialog:
@@ -15,6 +19,8 @@ class ErrorDialog:
     ) -> None:
         """Display a modal error message, optionally exposing a retry callback."""
 
+        logger.error("Showing error dialog: %s - %s", title, message)
+
         def close_dialog(_: ft.ControlEvent) -> None:
             dialog.open = False
             page.update()
@@ -23,6 +29,7 @@ class ErrorDialog:
             dialog.open = False
             page.update()
             if on_retry:
+                logger.info("Retry requested from error dialog")
                 on_retry()
 
         actions = [
