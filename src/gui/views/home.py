@@ -1,9 +1,13 @@
+import logging
 from pathlib import Path
 from typing import Callable, Optional
 
 import flet as ft
 
 from src.gui.components.loading_indicator import LoadingIndicator
+
+
+logger = logging.getLogger(__name__)
 
 
 class HomeView(ft.Container):
@@ -52,9 +56,11 @@ class HomeView(ft.Container):
     def _handle_file_picked(self, event: ft.FilePickerResultEvent) -> None:
         """Handle a successful pick by showing progress and delegating the load."""
         if not event.files:
+            logger.info("File picker closed without selection")
             return
 
         file_path = Path(event.files[0].path)
+        logger.info("File selected for loading: %s", file_path)
         self._loading.show(f"Loading {file_path.name}...")
         self._page.update()
 
@@ -62,5 +68,6 @@ class HomeView(ft.Container):
 
     def _on_progress(self, count: int) -> None:
         """Update the loading message from UI-thread callbacks."""
+        logger.debug("Home view progress update: %d", count)
         self._loading.set_message(f"📡 Loaded {count:,} points...")
         self._page.update()

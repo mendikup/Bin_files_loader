@@ -29,9 +29,25 @@ class MapView(ft.Container):
         self._points = points
         self._source_file = source_file
 
+        logger.info(
+            "Initializing map view for %s with %d points", source_file.name, len(points)
+        )
+
         center_lat, center_lon = calculate_center(self._points)
+        logger.debug(
+            "Calculated map center for %s: lat=%f, lon=%f",
+            source_file.name,
+            center_lat,
+            center_lon,
+        )
 
         sampled_points = self._points[::POLYLINE_SAMPLE_INTERVAL]
+        logger.debug(
+            "Sampling %d of %d points for polyline (interval=%d)",
+            len(sampled_points),
+            len(self._points),
+            POLYLINE_SAMPLE_INTERVAL,
+        )
         polyline_layer = fmap.PolylineLayer(
             polylines=[
                 fmap.PolylineMarker(
@@ -55,8 +71,22 @@ class MapView(ft.Container):
             for point in self._points[::marker_step]
         ]
 
+        logger.debug(
+            "Plotted %d markers using step=%d (max=%d)",
+            len(markers),
+            marker_step,
+            MARKER_MAX_COUNT,
+        )
+
         if self._points:
             start, end = self._points[0], self._points[-1]
+            logger.debug(
+                "Start point: lat=%f lon=%f | End point: lat=%f lon=%f",
+                start.lat,
+                start.lon,
+                end.lat,
+                end.lon,
+            )
             markers.insert(
                 0,
                 fmap.Marker(
@@ -93,6 +123,13 @@ class MapView(ft.Container):
             duration = self._points[-1].ts - self._points[0].ts if len(self._points) > 1 else 0
             min_alt = min(point.alt for point in self._points)
             max_alt = max(point.alt for point in self._points)
+            logger.info(
+                "Computed stats for %s: duration=%.1fs, min_alt=%.1fm, max_alt=%.1fm",
+                source_file.name,
+                duration,
+                min_alt,
+                max_alt,
+            )
         else:
             duration = 0.0
             min_alt = max_alt = 0.0
