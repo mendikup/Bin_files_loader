@@ -7,9 +7,9 @@ import flet_map as fmap
 
 from src.business_logic.models import FlightPoint
 from src.business_logic.utils.calculate_center import calculate_center
-from src.config.config_loader import load_config
+from config.config_loader import load_config
 
-MAP_INITIAL_ZOOM = 13.0
+MAP_INITIAL_ZOOM = 11.0
 MAP_HEIGHT = 700
 MARKER_MAX_COUNT = 400
 

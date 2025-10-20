@@ -1,6 +1,6 @@
 import flet as ft
 
-from src.config.log_config import setup_logging
+from config.log_config import setup_logging
 from src.gui.app_manager import AppManager
 
 
