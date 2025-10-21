@@ -3,20 +3,14 @@ from typing import Callable, Optional
 
 import flet as ft
 
-
 logger = logging.getLogger(__name__)
 
-
+#TODO: clean the code
 class ErrorDialog:
     """Utility helpers for showing error dialogs."""
 
     @staticmethod
-    def show(
-        page: ft.Page,
-        title: str,
-        message: str,
-        on_retry: Optional[Callable] = None,
-    ) -> None:
+    def show( page: ft.Page,title: str,message: str,on_retry: Optional[Callable] = None,) -> None:
         """Display a modal error message, optionally exposing a retry callback."""
 
         logger.error("Showing error dialog: %s - %s", title, message)

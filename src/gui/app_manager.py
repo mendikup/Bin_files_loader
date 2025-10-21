@@ -4,151 +4,151 @@ from typing import Callable, List, Optional
 
 import flet as ft
 
-from src.business_logic.manager import FlightLogManager
+from config.log_config import setup_logging
+from src.business_logic.flight_log_parser import FlightLogParser
 from src.business_logic.models import FlightPoint
-from src.gui.components.error_dialog import ErrorDialog
+from src.gui.error_handler import ErrorDialog
 from src.gui.views.home import HomeView
 from src.gui.views.map_view import MapView
-
 
 logger = logging.getLogger(__name__)
 
 
 class AppManager:
-    """Coordinate navigation, background loading, and progress reporting."""
+    """
+    Manages application lifecycle and coordinates components.
+    """
 
     def __init__(self, page: ft.Page) -> None:
         self.page = page
-        self.flight_log_manager = FlightLogManager()
-        self._progress_listener: Optional[Callable[[int], None]] = None
+        self.flight_log_manager = FlightLogParser()
 
-    def start_application_lifecycle(self) -> None:
-        """Attach navigation handlers and render the home screen."""
+    # ========================================
+    # Initialization
+    # ========================================
+
+    def initialize_app(self) -> None:
+        """Configure logging, page settings, and start the app."""
+        self._configure_logging()
+        self._configure_page()
+        self._start_lifecycle()
+
+    def _configure_logging(self) -> None:
+        """Set up logging system."""
+        setup_logging()
+        logger.info("Logger configured successfully.")
+
+    def _configure_page(self) -> None:
+        """Configure page appearance and constraints."""
+        self.page.title = "Flight Log Viewer"
+        self.page.padding = 20
+        self.page.window_min_width = 700
+        self.page.window_min_height = 400
+        logger.debug("Page configured: %s", self.page.title)
+
+    def _start_lifecycle(self) -> None:
+        """Attach navigation handlers and show home screen."""
         logger.info("Starting application lifecycle")
-        self.page.on_view_pop = self._handle_view_pop
+        self.page.on_view_pop = self._on_view_pop
+        self.show_home()
+
+    # ========================================
+    # Navigation
+    # ========================================
+
+    def _on_view_pop(self, event: ft.ViewPopEvent) -> None:
+        """Handle back navigation - returns to home screen."""
+        current_route: Optional[str] = getattr(getattr(event, "view", None), "route", None)
+        logger.debug("View pop event from route: %s", current_route)
         self.show_home()
 
     def show_home(self) -> None:
-        """Render the home view."""
-        logger.debug("Rendering home view")
+        """Display home screen with file picker."""
+        logger.debug("Showing home view")
         self.page.views.clear()
-        self.page.views.append(
-            ft.View(
-                route="/",
-                controls=[
-                    HomeView(
-                        page=self.page,
-                        on_load_request=self.handle_load_request,
-                        set_progress_listener=self.set_progress_listener,
-                    )
-                ],
-            )
-        )
+
+        home_view: HomeView = HomeView(page=self.page, on_load_request=self.handle_load_request)
+
+        self.page.views.append(ft.View(route="/", controls=[home_view]))
         self.page.update()
 
     def show_map(self, points: List[FlightPoint], source_file: Path) -> None:
-        """Render the map view for the loaded file."""
-        logger.info(
-            "Displaying map for %s with %d points", source_file.name, len(points)
-        )
-        self.set_progress_listener(None)
+        """Display map view with loaded flight data."""
+        logger.info("Showing map: %s with %d points", source_file.name, len(points))
         self.page.views.clear()
-        self.page.views.append(
-            ft.View(
-                route="/map",
-                controls=[MapView(points=points, source_file=source_file)],
-            )
-        )
+
+        map_view: MapView = MapView(points=points, source_file=source_file)
+
+        self.page.views.append(ft.View(route="/map", controls=[map_view]))
         self.page.update()
 
-    def _handle_view_pop(self, event: ft.ViewPopEvent) -> None:
-        """Navigate back to the home view when the user closes a route."""
-        route = getattr(getattr(event, "view", None), "route", None)
-        logger.debug("View pop event received: %s", route)
-        self.show_home()
+    # ========================================
+    # File Operations
+    # ========================================
 
-    def handle_load_request(self, file_path: Path) -> None:
-        """Start loading the selected file on a worker thread."""
-        logger.info("Received request to load file %s", file_path)
-        self.page.run_thread(lambda: self._load_and_show(file_path))
+    def handle_load_request(self, file_path: Path, ui_progress_callback: Callable[[int], None]) -> None:
+        """
+        Start loading selected file in background thread.
+        """
+        logger.info("Loading file: %s", file_path)
+        self.page.run_thread(lambda: self._load_file_background(file_path, ui_progress_callback))
 
-    def _load_and_show(self, path: Path) -> None:
-        """Load the file, then switch the UI when done."""
+    def _load_file_background(self, file_path: Path, ui_progress_callback: Callable[[int], None]) -> None:
+        """
+        Load file on worker thread and handle results.
+        Runs in background - does not block UI thread.
+        """
         try:
-            logger.debug("Background loading started for %s", path)
-            points = self.flight_log_manager.load_file(path, progress_callback=self._progress_cb)
-            self._schedule_ui(lambda: self._finish_load(points, path))
-        except Exception as e:
-            logger.exception("Error while loading %s", path)
-            self._schedule_ui(lambda: self._handle_load_error(e))
+            logger.debug("Background loading: %s", file_path)
 
-    def _progress_cb(self, count: int) -> None:
-        """Bounce progress updates from the worker thread to the UI thread."""
-        logger.debug("Progress callback invoked with count=%d", count)
-        self._schedule_ui(lambda: self._forward_progress(count))
+            # Load file with progress tracking
+            loaded_points: List[FlightPoint] = self.flight_log_manager.load_flight_log(
+                file_path,
+                on_progress_update=lambda point_count: self._forward_progress_to_ui(point_count, ui_progress_callback)
+            )
 
-    def _forward_progress(self, count: int) -> None:
-        """Notify the registered listener or fall back to stdout."""
-        if self._progress_listener:
-            try:
-                self._progress_listener(count)
-            except Exception:
-                logger.exception("Progress listener raised an exception")
-        else:
-            logger.info("Progress update with no listener: %d", count)
+            # Schedule success handler on UI thread
+            self._run_on_ui_thread(lambda: self._on_load_success(loaded_points, file_path))
 
-    def set_progress_listener(self, listener: Optional[Callable[[int], None]]) -> None:
-        """Register or remove the function that receives progress updates."""
-        logger.debug("Setting progress listener: %s", listener)
-        self._progress_listener = listener
+        except Exception as error:
+            logger.error("Load error for %s: %s", file_path, error)
+            # Schedule error handler on UI thread
+            self._run_on_ui_thread(lambda: self._on_load_error(error))
 
-    def _finish_load(self, points: List[FlightPoint], path: Path) -> None:
-        """Switch to the map view once data is ready."""
-        logger.info("Finished loading %s; preparing to display map", path.name)
-        self.set_progress_listener(None)
+    def _on_load_success(self, points: List[FlightPoint], path: Path) -> None:
+        """Handle successful file load (runs on UI thread)."""
+        logger.info("Load complete: %s with %d points", path.name, len(points))
         self.show_map(points, path)
 
-    def _handle_load_error(self, e: Exception) -> None:
-        """Show an error dialog when the load fails."""
-        self.set_progress_listener(None)
-        logger.error("Failed to load flight log: %s", e)
-        ErrorDialog.show(
-            page=self.page,
-            title="Failed to Load File",
-            message=str(e),
-        )
+    def _on_load_error(self, error: Exception) -> None:
+        """Handle file load failure (runs on UI thread)."""
+        logger.error("Load failed: %s", error)
+        ErrorDialog.show(page=self.page, title="Failed to Load File", message=str(error))
 
-    def _schedule_ui(self, fn: Callable[[], None]) -> None:
-        """Run *fn* on the UI thread, falling back to a direct call if needed."""
-        call = getattr(self.page, "call_from_thread", None)
-        if callable(call):
-            logger.debug("Scheduling function via call_from_thread")
-            call(fn)
-            return
+    # ========================================
+    # Progress Handling
+    # ========================================
 
-        invoke = getattr(self.page, "invoke", None)
-        if callable(invoke):
-            logger.debug("Scheduling function via invoke")
-            invoke(fn)
-            return
+    def _forward_progress_to_ui(self, point_count: int, ui_callback: Callable[[int], None]) -> None:
+        """
+        Forward progress update from worker thread to UI thread.
 
-        schedule = getattr(self.page, "schedule_task", None)
-        if callable(schedule):
-            logger.debug("Scheduling function via schedule_task")
-            schedule(fn)
-            return
+        Args:
+            point_count: Number of GPS points loaded so far
+            ui_callback: UI callback function to update display
+        """
+        logger.debug("Progress update: %d points", point_count)
+        self._run_on_ui_thread(lambda: ui_callback(point_count))
 
-        run_async = getattr(self.page, "run_async", None)
-        if callable(run_async):
-            try:
-                logger.debug("Scheduling function via run_async")
-                run_async(fn)
-            except Exception:
-                logger.exception("Failed to schedule function via run_async")
-            else:
-                return
+    # ========================================
+    # Threading Utilities
+    # ========================================
 
+    def _run_on_ui_thread(self, ui_function: Callable[[], None]) -> None:
+        """
+        Execute function safely on UI thread.
+        """
         try:
-            fn()
-        except Exception:
-            logger.exception("Failed to execute scheduled function directly")
+            ui_function()
+        except Exception as error:
+            logger.error("UI thread execution failed: %s", error)

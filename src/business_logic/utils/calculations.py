@@ -18,3 +18,14 @@ def calculate_center(points: List[FlightPoint]) -> Tuple[float, float]:
     return avg_lat, avg_lon
 
 
+def convert_to_flight_point (msg) -> FlightPoint:
+    """Convert MAVLink GPS message to FlightPoint."""
+    lat = msg.Lat
+    lon = msg.Lng
+
+    if abs(lat) > 90:  # Normalize microdegrees
+        lat /= 1e7
+    if abs(lon) > 180:
+        lon /= 1e7
+
+    return FlightPoint(lat=lat, lon=lon, alt=msg.Alt / 100.0, ts=msg.TimeUS / 1e6)

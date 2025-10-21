@@ -1,22 +1,34 @@
-# src/log_config.py
-
+from pathlib import Path
 import logging
 import logging.config
 import sys
 
-LOG_FILE = "flight_viewer.log"
-LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s"
-
 
 def setup_logging() -> None:
-    """Configure rotating file logging plus an error stream handler."""
+    """Configure rotating file and console logging available from anywhere in the project.
+
+    The log directory is always resolved relative to the project root,
+    so logs are written correctly no matter where the program is launched from.
+    """
+
+    # Project root = one level above the "config" folder
+    project_root = Path(__file__).resolve().parents[1]
+
+    # Ensure logs directory exists
+    log_dir = project_root / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    log_file = log_dir / "flight_viewer.log"
+
+    log_format = "%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s"
+
 
     config = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
             "standard": {
-                "format": LOG_FORMAT,
+                "format": log_format,
                 "datefmt": "%Y-%m-%d %H:%M:%S",
             },
         },
@@ -25,7 +37,7 @@ def setup_logging() -> None:
                 "level": "INFO",
                 "formatter": "standard",
                 "class": "logging.handlers.RotatingFileHandler",
-                "filename": LOG_FILE,
+                "filename": str(log_file),
                 "maxBytes": 1024 * 1024 * 5,
                 "backupCount": 5,
             },
@@ -45,4 +57,5 @@ def setup_logging() -> None:
         },
     }
 
+    # Apply configuration globally
     logging.config.dictConfig(config)
