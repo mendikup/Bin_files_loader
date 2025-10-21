@@ -1,34 +1,29 @@
+import logging
+from typing import Callable, Optional
+
 import flet as ft
-from typing import Optional, Callable
 
+logger = logging.getLogger(__name__)
 
+#TODO: clean the code
 class ErrorDialog:
-    """Static helper for showing error dialogs."""
+    """Utility helpers for showing error dialogs."""
 
     @staticmethod
-    def show(
-            page: ft.Page,
-            title: str,
-            message: str,
-            on_retry: Optional[Callable] = None
-    ) -> None:
-        """Display error dialog with optional retry button.
+    def show( page: ft.Page,title: str,message: str,on_retry: Optional[Callable] = None,) -> None:
+        """Display a modal error message, optionally exposing a retry callback."""
 
-        Args:
-            page: The Flet page to show dialog on
-            title: Dialog title text
-            message: Error message details
-            on_retry: Optional callback for retry button
-        """
+        logger.error("Showing error dialog: %s - %s", title, message)
 
-        def close_dialog(e):
+        def close_dialog(_: ft.ControlEvent) -> None:
             dialog.open = False
             page.update()
 
-        def handle_retry(e):
+        def handle_retry(_: ft.ControlEvent) -> None:
             dialog.open = False
             page.update()
             if on_retry:
+                logger.info("Retry requested from error dialog")
                 on_retry()
 
         actions = [

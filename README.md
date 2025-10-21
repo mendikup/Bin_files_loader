@@ -8,7 +8,7 @@
 
 ```bash
 pip install -r requirements.txt
-flet run gui/app.py
+flet run gui/main.py
 ```
 
 במסך הראשי לחץ על "בחר קובץ" ובחר קובץ ``.BIN`` שיצא מבקר הטיסה. האפליקציה
