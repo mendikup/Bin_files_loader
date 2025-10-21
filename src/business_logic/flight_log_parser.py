@@ -39,7 +39,7 @@ class FlightLogParser:
     # File validation
     # ===============================================================
 
-    def _validate_file(self, file_path: Path) -> None:
+    def _validate_file(self, file_path: Path) -> None: #TODO MOVE THE VALIDATION TO THE GUI
         """Ensure file exists, is .BIN, and not empty."""
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")

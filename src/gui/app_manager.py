@@ -21,7 +21,7 @@ class AppManager:
 
     def __init__(self, page: ft.Page) -> None:
         self.page = page
-        self.flight_log_manager = FlightLogParser()
+        self.flight_log_parser = FlightLogParser()
 
     # ========================================
     # Initialization
@@ -56,10 +56,9 @@ class AppManager:
     # Navigation
     # ========================================
 
-    def _on_view_pop(self, event: ft.ViewPopEvent) -> None:
-        """Handle back navigation - returns to home screen."""
-        current_route: Optional[str] = getattr(getattr(event, "view", None), "route", None)
-        logger.debug("View pop event from route: %s", current_route)
+    def _on_view_pop(self, _: ft.ViewPopEvent) -> None:
+        """Handle back navigation."""
+        logger.debug("View pop triggered, returning to home view.")
         self.show_home()
 
     def show_home(self) -> None:
@@ -102,7 +101,7 @@ class AppManager:
             logger.debug("Background loading: %s", file_path)
 
             # Load file with progress tracking
-            loaded_points: List[FlightPoint] = self.flight_log_manager.load_flight_log(
+            loaded_points: List[FlightPoint] = self.flight_log_parser.load_flight_log(
                 file_path,
                 on_progress_update=lambda point_count: self._forward_progress_to_ui(point_count, ui_progress_callback)
             )
