@@ -1,96 +1,58 @@
-import logging
+import flet as ft
+import flet_map as fmap
 from pathlib import Path
 from typing import List, Tuple
 
-import flet as ft
-import flet_map as fmap
-
-from config.config_loader import load_config
+from src.utils.logger import logger
+from src.utils.config_loader import config
 from src.business_logic.models import FlightPoint
-
-logger = logging.getLogger(__name__)
-
-# ===============================================================
-# Map constants
-# ===============================================================
-
-MAP_INITIAL_ZOOM = 11.0
-MAP_HEIGHT = 700
-MARKER_MAX_COUNT = 400
-
-_MAP_CONFIG = load_config()
-MAP_TILE_URL = _MAP_CONFIG["MAP_TILE_URL"]
-POLYLINE_SAMPLE_INTERVAL = max(1, int(_MAP_CONFIG["POLYLINE_SAMPLE_INTERVAL"]))
 
 
 class MapView(ft.Container):
-    """Interactive map that displays a flight path and flight statistics."""
+    """Displays an interactive map with the loaded flight path."""
 
     def __init__(self, points: List[FlightPoint], source_file: Path):
         super().__init__()
         self._points = points
         self._source_file = source_file
 
-        logger.info("Initializing map view for %s (%d points)", source_file.name, len(points))
-
-        center_lat, center_lon = self._get_center_coordinates()
+        lat, lon = self._get_center()
         polyline_layer = self._build_polyline_layer()
         markers = self._build_markers()
-        flight_map = self._create_map(center_lat, center_lon, polyline_layer, markers)
+        fmap_component = self._create_map(lat, lon, polyline_layer, markers)
         stats_panel = self._build_stats_panel()
-        self.content = self._build_layout(flight_map, stats_panel)
+        self.content = self._layout(fmap_component, stats_panel)
 
-    # ===============================================================
-    # Core Map Building Steps
-    # ===============================================================
-
-    def _get_center_coordinates(self) -> Tuple[float, float]:
-        """Return average (lat, lon) of all points."""
+    def _get_center(self) -> Tuple[float, float]:
         if not self._points:
             return 0.0, 0.0
-        avg_lat = sum(p.lat for p in self._points) / len(self._points)
-        avg_lon = sum(p.lon for p in self._points) / len(self._points)
-        logger.debug("Map center calculated: (%.6f, %.6f)", avg_lat, avg_lon)
-        return avg_lat, avg_lon
+        lat = sum(p.lat for p in self._points) / len(self._points)
+        lon = sum(p.lon for p in self._points) / len(self._points)
+        return lat, lon
 
     def _build_polyline_layer(self) -> fmap.PolylineLayer:
-        """Create the blue flight path line on the map."""
-        polyline_points = self._points[::POLYLINE_SAMPLE_INTERVAL]
-        logger.debug(
-            "Sampling %d of %d points for polyline (interval=%d)",
-            len(polyline_points),
-            len(self._points),
-            POLYLINE_SAMPLE_INTERVAL,
-        )
-
-        polyline_marker = fmap.PolylineMarker(
-            coordinates=[
-                fmap.MapLatitudeLongitude(point.lat, point.lon) for point in polyline_points
-            ],
+        interval = config.map.polyline_sample_interval
+        sampled_points = self._points[::interval]
+        polyline = fmap.PolylineMarker(
+            coordinates=[fmap.MapLatitudeLongitude(p.lat, p.lon) for p in sampled_points],
             border_stroke_width=3,
             border_color=ft.Colors.BLUE,
             color=ft.Colors.with_opacity(0.6, ft.Colors.BLUE),
         )
-        return fmap.PolylineLayer(polylines=[polyline_marker])
+        return fmap.PolylineLayer(polylines=[polyline])
 
     def _build_markers(self) -> List[fmap.Marker]:
-        """Add start, end, and intermediate markers on the map."""
-        marker_sampling_interval = max(1, len(self._points) // MARKER_MAX_COUNT)
+        max_count = config.map.marker_max_count
+        step = max(1, len(self._points) // max_count)
         markers = [
             fmap.Marker(
                 content=ft.Icon(ft.Icons.LOCATION_ON, color=ft.Colors.RED, size=18),
-                coordinates=fmap.MapLatitudeLongitude(point.lat, point.lon),
+                coordinates=fmap.MapLatitudeLongitude(p.lat, p.lon),
             )
-            for point in self._points[::marker_sampling_interval]
+            for p in self._points[::step]
         ]
-
         if self._points:
             start, end = self._points[0], self._points[-1]
-            logger.debug(
-                "Start point: lat=%f lon=%f | End point: lat=%f lon=%f",
-                start.lat, start.lon, end.lat, end.lon,
-            )
-            # Add start & end icons
             markers.insert(
                 0,
                 fmap.Marker(
@@ -104,84 +66,38 @@ class MapView(ft.Container):
                     coordinates=fmap.MapLatitudeLongitude(end.lat, end.lon),
                 )
             )
-        logger.debug(
-            "Plotted %d markers (interval=%d, max=%d)",
-            len(markers), marker_sampling_interval, MARKER_MAX_COUNT,
-        )
         return markers
 
-    def _create_map(
-        self, lat: float, lon: float, polyline_layer: fmap.PolylineLayer, markers: List[fmap.Marker]
-    ) -> fmap.Map:
-        """Assemble map layers and configuration."""
+    def _create_map(self, lat: float, lon: float, polyline_layer: fmap.PolylineLayer, markers: List[fmap.Marker]) -> fmap.Map:
         return fmap.Map(
             expand=True,
             initial_center=fmap.MapLatitudeLongitude(lat, lon),
-            initial_zoom=MAP_INITIAL_ZOOM,
-            height=MAP_HEIGHT,
-            interaction_configuration=fmap.MapInteractionConfiguration(
-                flags=fmap.MapInteractiveFlag.ALL
-            ),
+            initial_zoom=config.map.initial_zoom,
+            height=config.map.height,
             layers=[
-                fmap.TileLayer(
-                    url_template=MAP_TILE_URL,
-                    on_image_error=lambda error: logger.error("Tile error: %s", error),
-                ),
+                fmap.TileLayer(url_template=config.map.tile_url),
                 polyline_layer,
                 fmap.MarkerLayer(markers=markers),
             ],
         )
 
-    # ===============================================================
-    # Statistics Panel
-    # ===============================================================
-
-    def _compute_flight_stats(self) -> Tuple[float, float, float]:
-        """Calculate duration (s), min altitude, and max altitude."""
+    def _build_stats_panel(self) -> ft.Container:
         if not self._points:
-            return 0.0, 0.0, 0.0
-        duration = self._points[-1].ts - self._points[0].ts if len(self._points) > 1 else 0
+            return ft.Container(content=ft.Text("No data"))
+        duration = self._points[-1].ts - self._points[0].ts
         min_alt = min(p.alt for p in self._points)
         max_alt = max(p.alt for p in self._points)
-        return duration, min_alt, max_alt
-
-    def _build_stats_panel(self) -> ft.Container:
-        """Create right-hand panel showing flight statistics."""
-        duration, min_alt, max_alt = self._compute_flight_stats()
-
         stats = [
-            ft.Text("Flight Statistics", size=16, weight=ft.FontWeight.BOLD),
-            ft.Divider(height=1),
-            ft.Text(f"File: {self._source_file.name}", size=12),
-            ft.Text(f"Points: {len(self._points):,}", size=12),
-            ft.Text(f"Duration: {duration:.1f}s", size=12),
-            ft.Text(f"Altitude: {min_alt:.1f}m - {max_alt:.1f}m", size=12),
+            ft.Text(f"File: {self._source_file.name}"),
+            ft.Text(f"Points: {len(self._points):,}"),
+            ft.Text(f"Duration: {duration:.1f}s"),
+            ft.Text(f"Altitude: {min_alt:.1f}m - {max_alt:.1f}m"),
         ]
+        return ft.Container(content=ft.Column(stats, spacing=4), padding=10)
 
-        return ft.Container(
-            content=ft.Column(stats, spacing=5),
-            padding=15,
-            bgcolor=ft.Colors.ON_SURFACE_VARIANT,
-            border_radius=10,
-        )
-
-    # ===============================================================
-    # Final Layout Assembly
-    # ===============================================================
-
-    def _build_layout(self, flight_map: fmap.Map, stats_panel: ft.Container) -> ft.Column:
-        """Combine title, map, and statistics into a single layout."""
+    def _layout(self, fmap_component: fmap.Map, stats_panel: ft.Container) -> ft.Column:
         header = ft.Row(
-            [
-                ft.Text("Flight Path", size=24, weight=ft.FontWeight.BOLD),
-                ft.Container(expand=True),
-                stats_panel,
-            ],
+            [ft.Text("Flight Path", size=22, weight=ft.FontWeight.BOLD), stats_panel],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
-
-        return ft.Column(
-            [header, ft.Container(flight_map, expand=True, border_radius=10)],
-            expand=True,
-            spacing=15,
-        )
+        return ft.Column([header, ft.Container(fmap_component, expand=True, border_radius=10)], expand=True)

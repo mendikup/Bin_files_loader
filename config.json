@@ -1,0 +1,28 @@
+{
+  "app": {
+    "title": "Flight Log Viewer",
+    "min_width": 700,
+    "min_height": 400,
+    "padding": 20
+  },
+
+  "parser": {
+    "progress_update_interval": 500,
+    "min_valid_file_size": 512
+  },
+
+  "map": {
+    "tile_url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "initial_zoom": 11.0,
+    "height": 700,
+    "marker_max_count": 400,
+    "polyline_sample_interval": 10
+  },
+
+  "logging": {
+    "file_name": "flight_viewer.log",
+    "level": "INFO",
+    "dir": "logs",
+    "format": "%(asctime)s | %(levelname)-8s | %(message)s"
+  }
+}
