@@ -1,5 +1,0 @@
-{
-  "MAP_TILE_URL": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-  "POLYLINE_SAMPLE_INTERVAL": 10
-}
-
