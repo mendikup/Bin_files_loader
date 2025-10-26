@@ -2,10 +2,9 @@ import logging
 from pathlib import Path
 from typing import Callable, Iterator, Optional, List
 from pymavlink import mavutil
-
 from src.business_logic.models import FlightPoint
 
-logger = logging.getLogger(__name__)
+from src.utils.logger import logger
 
 
 class FlightLogParser:
