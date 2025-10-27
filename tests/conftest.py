@@ -135,80 +135,63 @@ class BinLogParser:
     # Decode messages into actual numeric values using FMT field names
     # ---------------------------------------------------------------------
 
-    def decode_messages(
-            self,
-            df: pd.DataFrame,
-            filter_name: str,
-            output_columns: Optional[List[str]] = None,
-    ) -> pd.DataFrame:
+    def decode_all_messages_to_csv(self, output_path="decoded_all.csv", batch_size=50000):
         """
-        Decode specific message types (e.g., GPS) from the BIN file into real numeric values.
-
-        Automatically retrieves the column names from the FMT definition (if available).
-        Handles cases where field count and format length do not match perfectly.
+        Decode all messages and write directly to CSV in batches
+        to avoid memory overflow.
         """
-        if not self.file_path:
-            raise ValueError("No binary file path available.")
+        import struct
+        import pandas as pd
+        import time
 
-        target_df = df[df["name"] == filter_name].copy()
-        if target_df.empty:
-            raise ValueError(f"No messages found with name '{filter_name}'.")
+        if not self.fmt_definitions or not self.messages_data:
+            raise ValueError("No parsed data found. Run parse() first.")
 
-        # Find FMT definition
-        fmt_entry = None
-        for fmt in self.fmt_definitions.values():
-            if fmt[0] == filter_name:
-                fmt_entry = fmt
-                break
-        if not fmt_entry:
-            raise ValueError(f"FMT definition for '{filter_name}' not found.")
+        start = time.perf_counter()
+        rows = []
+        total_written = 0
+        header_written = False
 
-        _, msg_len, ardu_fmt = fmt_entry
-
-        # Determine field names
-        if filter_name in self.fmt_field_names:
-            field_names = self.fmt_field_names[filter_name]
-        elif output_columns:
-            field_names = output_columns
-        else:
-            field_names = [f"field_{i}" for i in range(len(ardu_fmt))]
-
-        struct_fmt = self._convert_fmt_to_struct(ardu_fmt)
-        fmt_size = struct.calcsize(struct_fmt)
-
-        decoded_rows = []
         with open(self.file_path, "rb") as f:
-            for _, row in target_df.iterrows():
-                offset = int(row["offset"])
-                f.seek(offset + 3)  # skip sync + msg_type
-                data_bytes = f.read(fmt_size)
+            for i, msg in enumerate(self.messages_data, start=1):
+                fmt_entry = self.fmt_definitions.get(msg["type_id"])
+                if not fmt_entry or not fmt_entry[2]:
+                    continue
+
+                name = msg["name"]
+                ardu_fmt = fmt_entry[2]
+                struct_fmt = self._convert_fmt_to_struct(ardu_fmt)
+                fmt_size = struct.calcsize(struct_fmt)
+
+                f.seek(msg["offset"] + 3)
                 try:
-                    values = struct.unpack(struct_fmt, data_bytes)
-                    decoded_rows.append(values)
+                    values = struct.unpack(struct_fmt, f.read(fmt_size))
                 except struct.error:
                     continue
 
-        if not decoded_rows:
-            raise ValueError(f"No decodable messages found for '{filter_name}'.")
+                field_names = self.fmt_field_names.get(name, [])
+                if len(field_names) != len(values):
+                    field_names = [f"field_{i}" for i in range(len(values))]
 
-        # --- 2️⃣ Build decoded DataFrame safely ---
-        num_cols = len(decoded_rows[0])
+                row = {"name": name}
+                row.update({k: v for k, v in zip(field_names, values)})
+                rows.append(row)
 
-        # Adjust number of column names to match actual data length
-        if len(field_names) < num_cols:
-            # If FMT field list is shorter, extend with generic names
-            field_names = field_names + [f"field_{i}" for i in range(len(field_names), num_cols)]
-        elif len(field_names) > num_cols:
-            # If FMT field list is longer, trim extra names
-            field_names = field_names[:num_cols]
+                if len(rows) >= batch_size:
+                    df = pd.DataFrame(rows)
+                    df.to_csv(output_path, index=False, mode="a", header=not header_written)
+                    header_written = True
+                    total_written += len(df)
+                    rows.clear()
 
-        # Build the DataFrame
-        decoded_df = pd.DataFrame(decoded_rows, columns=field_names)
-        decoded_df.insert(0, "offset", target_df["offset"].values)
-        decoded_df.insert(1, "type_id", target_df["type_id"].values)
-        decoded_df.insert(2, "name", target_df["name"].values)
+            # write remaining rows
+            if rows:
+                df = pd.DataFrame(rows)
+                df.to_csv(output_path, index=False, mode="a", header=not header_written)
+                total_written += len(df)
 
-        return decoded_df
+        print(f"✅ Decoded and saved {total_written:,} messages to '{output_path}' "
+              f"in {time.perf_counter() - start:.2f} seconds")
 
     # ---------------------------------------------------------------------
     # Internal Helpers
@@ -293,17 +276,22 @@ class BinLogParser:
         return '<' + ''.join(type_map.get(ch, '') for ch in ardu_fmt)
 
 
+# parser = BinLogParser("log_file_test_01.bin")
+# parser.parse()
+# print(f"Parsed {parser.total_msgs:,} messages in {parser.parse_time:.2f} sec")
+#
+#
+#
+# # Convert to DataFrame
+# df, stats_df = parser.to_dataframe()
+# print(f"DataFrame created ({stats_df['rows']} rows) in {stats_df['df_write_time_sec']:.2f} sec")
+#
+# # Decode GPS messages to numeric values with field names
+# decoded_gps = parser.decode_messages(df, "GPS")
+# print(decoded_gps.head())
+
+
+
 parser = BinLogParser("log_file_test_01.bin")
 parser.parse()
-print(f"Parsed {parser.total_msgs:,} messages in {parser.parse_time:.2f} sec")
-
-
-
-# Convert to DataFrame
-df, stats_df = parser.to_dataframe()
-print(f"DataFrame created ({stats_df['rows']} rows) in {stats_df['df_write_time_sec']:.2f} sec")
-
-# Decode GPS messages to numeric values with field names
-decoded_gps = parser.decode_messages(df, "GPS")
-print(decoded_gps.head())
-
+df_all = parser.decode_all_messages_to_csv()
