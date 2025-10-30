@@ -20,9 +20,12 @@
   },
 
   "logging": {
-    "file_name": "flight_viewer.log",
-    "level": "INFO",
-    "dir": "logs",
-    "format": "%(asctime)s | %(levelname)-8s | %(message)s"
-  }
+      "file_name": "flight_viewer.log",
+      "dir": "logs",
+      "level": "INFO",
+      "format": "%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
+      "max_bytes": 5242880,
+      "backup_count": 5
+    }
+
 }
