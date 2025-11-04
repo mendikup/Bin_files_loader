@@ -277,5 +277,5 @@ def compare_with_pymavlink(file_path, sample_limit=2000, tolerance=1e-3):
 
 
 if __name__ == "__main__":
-    FILE_PATH = "log_file_test_01.bin"
+    FILE_PATH = "../test_parsers/log_file_test_01.bin"
     compare_with_pymavlink(FILE_PATH, sample_limit=2000)

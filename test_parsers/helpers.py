@@ -1,64 +1,46 @@
-"""Helper utilities for safe file splitting in parallel BIN decoding."""
-
 import mmap
-import time
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
-SYNC_MARKER = b"\xA3\x95"
+SYNC_MARKER = b"\xa3\x95"
 
 
-def find_all_sync_positions(mapped_file: mmap.mmap) -> List[int]:
-    """
-    Find all synchronization marker positions in the file efficiently.
+def find_valid_sync_positions(mapped_log: mmap.mmap, fmt_defs: Dict[int, Dict]) -> List[int]:
+    """Return offsets of valid sync markers where the message type is known."""
+    file_size = mapped_log.size()
+    pos = 0
+    positions = []
 
-    Args:
-        mapped_file: memory-mapped BIN file.
-
-    Returns:
-        A list of byte offsets where SYNC_MARKER (0xA3 0x95) appears.
-    """
-    start_time = time.perf_counter()
-    positions: List[int] = []
-    file_size = mapped_file.size()
-    start_offset = 0
-
-    # שימוש ב־mmap.find() במקום memoryview.find()
-    while start_offset < file_size:
-        index = mapped_file.find(SYNC_MARKER, start_offset)
-        if index == -1:
+    while True:
+        pos = mapped_log.find(SYNC_MARKER, pos)
+        if pos == -1 or pos + 3 >= file_size:
             break
-        positions.append(index)
-        # דילוג קטן קדימה (אין סיכון לפספס הודעה אמיתית)
-        start_offset = index + 8
-
-    elapsed = time.perf_counter() - start_time
-    print(f"⏱️  Scanned SYNC markers: found {len(positions):,} in {elapsed:.3f}s")
+        msg_id = mapped_log[pos + 2]
+        fmt = fmt_defs.get(msg_id)
+        if fmt:
+            msg_len = fmt["message_length"]
+            if pos + msg_len <= file_size:
+                positions.append(pos)
+        pos += 1
     return positions
 
 
-def split_into_equal_ranges(sync_positions: List[int], num_workers: int) -> List[Tuple[int, int]]:
-    """
-    Split the sync marker positions into approximately equal ranges.
+def split_ranges(syncs: List[int], num_parts: int, file_size: int) -> List[Tuple[int, int]]:
+    """Split the file into balanced non-overlapping ranges based on valid syncs."""
+    if not syncs:
+        return [(0, file_size)]
 
-    Each range defines (start_offset, end_offset) boundaries for a worker.
+    num_parts = max(1, min(num_parts, len(syncs)))
+    per_part = len(syncs) // num_parts
+    remainder = len(syncs) % num_parts
 
-    Args:
-        sync_positions: All offsets of valid SYNC markers.
-        num_workers: Number of worker processes desired.
-
-    Returns:
-        A list of (start, end) tuples. The last end may be None (till EOF).
-    """
-    if not sync_positions:
-        return []
-
-    total_syncs = len(sync_positions)
-    split_indexes = [i * total_syncs // num_workers for i in range(num_workers + 1)]
-
-    ranges: List[Tuple[int, int]] = []
-    for start_index, end_index in zip(split_indexes[:-1], split_indexes[1:]):
-        start_offset = sync_positions[start_index]
-        end_offset = sync_positions[end_index] if end_index < total_syncs else None
-        ranges.append((start_offset, end_offset))
+    ranges = []
+    index = 0
+    for i in range(num_parts):
+        take = per_part + (1 if i < remainder else 0)
+        start = syncs[index]
+        index2 = index + take
+        end = file_size if index2 >= len(syncs) else syncs[index2]
+        ranges.append((start, end))
+        index = index2
 
     return ranges
