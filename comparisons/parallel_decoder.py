@@ -8,7 +8,7 @@ from multiprocessing import Pool, get_context
 
 
 
-LOG_FILE = "log_file_test_01.bin"
+LOG_FILE = "../test_parsers/log_file_test_01.bin"
 SYNC_MARKER = b"\xA3\x95"
 FMT_TYPE_ID = 0x80
 FMT_MESSAGE_LENGTH = 89
@@ -215,10 +215,10 @@ def split_into_equal_ranges(sync_positions: List[int], num_workers: int):
 
 def worker_decode_range(args):
     """Worker process: count valid decoded messages in the given range."""
-    file_path, start, end, fmt_defs = args
+    file_path, start, end, fmt_definitions = args
     with open(file_path, "rb") as f:
         mapped = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-        parser = BinLogParser(mapped, fmt_defs.copy())
+        parser = BinLogParser(mapped, fmt_definitions.copy())
         parser._rebuild_struct_objects()   # ✅ add this line!
 
         count = 0
@@ -253,8 +253,8 @@ def run_parallel_decoder():
         ranges = split_into_equal_ranges(syncs, num_workers=4)
         mapped.close()
 
-    jobs = [(LOG_FILE, s, e, formats) for s, e in ranges]
-    with get_context("spawn").Pool(4) as pool:
+    jobs = [(LOG_FILE, start, end, formats) for start, end in ranges]
+    with get_context("spawn").Pool(8) as pool:
         results = pool.map(worker_decode_range, jobs)
 
     total_msgs = sum(results)

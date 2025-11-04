@@ -44,3 +44,11 @@ def split_ranges(syncs: List[int], num_parts: int, file_size: int) -> List[Tuple
         index = index2
 
     return ranges
+
+
+
+
+
+
+
+
