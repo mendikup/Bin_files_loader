@@ -107,7 +107,6 @@ class BinLogParser:
         self,
         start_offset: int,
         end_offset: Optional[int] = None,
-        as_tuples: bool = False,
         message_filter: Optional[set[str]] = None,
     ) -> Generator[Union[Tuple, Dict], None, None]:
         """Decode all messages in the given byte range."""
@@ -142,7 +141,7 @@ class BinLogParser:
                 continue
 
             decoded_message = self._decode_single_message(
-                fmt_definition, position, end_offset, as_tuples, unpack_cache
+                fmt_definition, position, end_offset, unpack_cache
             )
 
             if decoded_message is not None:
@@ -162,7 +161,6 @@ class BinLogParser:
         fmt_definition: Dict,
         position: int,
         end_offset: int,
-        as_tuples: bool,
         unpack_cache: Dict[int, callable],
     ) -> Optional[Union[Tuple, Dict]]:
         """Decode a single message based on its FMT structure."""
@@ -175,7 +173,7 @@ class BinLogParser:
         try:
             unpacked_values: List = self._unpack_values(fmt_definition, payload_start, unpack_cache)
             scaled_values: List = self._apply_scaling(unpacked_values, fmt_definition["ardu_format"])
-            return self._build_message_as_dict_or_tuple(fmt_definition, scaled_values, as_tuples)
+            return self._build_message_as_dict(fmt_definition, scaled_values)
         except struct.error:
             return None  # skip malformed message
 
@@ -202,10 +200,7 @@ class BinLogParser:
             for val, fmt_char in zip(values, ardu_format)
         ]
 
-    def _build_message_as_dict_or_tuple(self, fmt_definition: Dict, values: List, as_tuples: bool) -> Union[Tuple, Dict]:
-        """Build decoded message as dict or tuple."""
-        if as_tuples:
-            return (fmt_definition["name"], *values)  # return tuple form if requested
+    def _build_message_as_dict(self, fmt_definition: Dict, values: List) -> Union[Tuple, Dict]:
 
         message: Dict[str, Union[str, float, int]] = dict(zip(fmt_definition["field_names"], values))
         message["message_type"] = fmt_definition["name"]
