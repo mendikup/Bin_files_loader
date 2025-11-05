@@ -2,49 +2,43 @@ import re
 import struct
 import mmap
 import time
-from typing import Dict, List, Optional, Tuple, Union, Generator, Callable
+from typing import Dict, List, Optional, Tuple, Union, Generator
 
-# ---------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------
+from src.utils.config_loader import config
+from src.utils.log_config import logger
+
+
+
 SYNC_MARKER: bytes = b"\xa3\x95"
 FMT_TYPE_ID: int = 0x80
 FMT_MESSAGE_LENGTH: int = 89
-SCALE_FACTORS: Dict[str, float] = {"c": 0.01, "C": 0.01, "e": 0.01, "E": 0.01, "L": 1e-7}
 
 
 class BinLogParser:
-    """
-    Parser for ArduPilot BIN log files.
-    Handles FMT definitions and message decoding.
-    """
-
     def __init__(
         self,
         mapped_flight_log: mmap.mmap,
         format_definitions: Optional[Dict[int, Dict]] = None,
         round_floats: bool = False,
+        collect_warnings: bool = False
     ) -> None:
         self.mapped_flight_log = mapped_flight_log
         self.fmt_definitions: Dict[int, Dict] = format_definitions or {}
         self.round_floats = round_floats
+        self.collect_warnings = collect_warnings
+        self.warnings: list[str] = [] if collect_warnings else None
+        self._fields_to_round: set[str] = set(config.parser.round_fields)
+        self._ardu_to_struct: Dict[str, str] = dict(config.parser.ardu_to_struct)
+        self._scale_factors: Dict[str, float] = dict(config.parser.scale_factors)
 
-        # Fields that should be rounded to 3 decimals (if enabled)
-        self._fields_to_round: set[str] = {
-            "Lat", "Lng", "Alt", "AltMSL", "AltRel", "BarAlt",
-            "Vel", "Spd", "VN", "VE", "VD", "Roll", "Pitch", "Yaw",
-        }
 
-    # ---------------------------------------------------------------------
-    # FMT scanning
-    # ---------------------------------------------------------------------
     def preload_fmt_messages(self) -> int:
         """
         Scan the log for FMT messages and populate fmt_definitions.
         Then validate all struct formats (without building struct objects).
         """
         file_size: int = self.mapped_flight_log.size()
-        print(f"[DEBUG] Scanning FMT messages in file of {file_size:,} bytes...")
+        logger.debug(f"Scanning FMT messages in file of {file_size:,} bytes...")
 
         fmt_count: int = 0
         for fmt_offset in self._find_fmt_offsets():
@@ -52,7 +46,7 @@ class BinLogParser:
                 fmt_count += 1
 
         self._validate_fmt_definitions()  # only validation here, no struct creation
-        print(f"[DEBUG] Total FMT definitions found: {fmt_count}")
+        logger.debug(f"Total FMT definitions found: {fmt_count}")
         return fmt_count
 
     def _find_fmt_offsets(self) -> Generator[int, None, None]:
@@ -84,25 +78,25 @@ class BinLogParser:
 
                 # Check size consistency between defined and calculated
                 if struct_size != fmt_definition["struct_size"]:
-                    print(
-                        f"[WARN] Struct size mismatch for {fmt_definition['name']} (ID {msg_id}): "
-                        f"expected {fmt_definition['struct_size']} bytes, got {struct_size}"
+                    logger.warning(
+                        "Struct size mismatch for %s (ID %s): expected %s bytes, got %s",
+                        fmt_definition["name"], msg_id, fmt_definition["struct_size"], struct_size
                     )
 
                 # Check struct does not exceed total message length
                 if struct_size > expected:
-                    print(
-                        f"[WARN] Struct exceeds message length for {fmt_definition['name']} (ID {msg_id})."
+                    logger.warning(
+                        "Struct exceeds message length for %s (ID %s)",
+                        fmt_definition["name"], msg_id
                     )
 
             except struct.error as err:
-                print(
-                    f"[WARN] Invalid struct format for {fmt_definition['name']} (ID {msg_id}): {err}"
+                logger.warning(
+                    "Invalid struct format for %s (ID %s): %s",
+                    fmt_definition.get("name", "?"), msg_id, err
                 )
 
-    # ---------------------------------------------------------------------
-    # Message decoding
-    # ---------------------------------------------------------------------
+
     def parse_messages_in_range(
         self,
         start_offset: int,
@@ -133,6 +127,7 @@ class BinLogParser:
 
             fmt_definition: Optional[Dict] = self.fmt_definitions.get(message_id)
             if not fmt_definition or "struct_obj" not in fmt_definition:
+                self.warnings.append(f"Unknown or uninitialized message ID at offset {position}: {message_id}")
                 position += 1  # move forward if unknown message type
                 continue
 
@@ -151,7 +146,7 @@ class BinLogParser:
             position += fmt_definition["message_length"]  # advance to next message
 
         total_time = time.perf_counter() - start_time
-        print(f"[DEBUG] Decoded {total_decoded:,} messages in {total_time:.2f}s")
+        logger.debug("Decoded %s messages in %.2fs", total_decoded, total_time)
 
     # ---------------------------------------------------------------------
     # Internal helpers
@@ -168,13 +163,24 @@ class BinLogParser:
         payload_end: int = payload_start + fmt_definition["struct_size"]
 
         if payload_end > end_offset:
+            self.warnings.append(
+                f"Truncated message at offset {position}: expected {fmt_definition['struct_size']} bytes"
+            )
             return None  # stop if message goes beyond file end
 
         try:
             unpacked_values: List = self._unpack_values(fmt_definition, payload_start, unpack_cache)
             scaled_values: List = self._apply_scaling(unpacked_values, fmt_definition["ardu_format"])
+
+            if len(scaled_values) != len(fmt_definition["field_names"]):
+                self.warnings.append(
+                    f"Field count mismatch for {fmt_definition['name']} at {position}: "
+                    f"{len(scaled_values)} values vs {len(fmt_definition['field_names'])} fields"
+                )
+
             return self._build_message_as_dict(fmt_definition, scaled_values)
-        except struct.error:
+        except struct.error as err:
+            self.warnings.append(f"Unpack failed at offset {position}: {err}")
             return None  # skip malformed message
 
     def _find_next_message(self, mapped_log: mmap.mmap, position: int, end_offset: int) -> Optional[int]:
@@ -187,7 +193,6 @@ class BinLogParser:
     def _unpack_values(self, fmt_definition: Dict, payload_start: int, unpack_cache: Dict[int, callable]) -> List:
         """Unpack binary payload using cached struct definitions."""
         message_id: int = fmt_definition["id"]
-
         if message_id not in unpack_cache:  # add to cache if not seen before
             unpack_cache[message_id] = fmt_definition["struct_obj"].unpack_from
 
@@ -195,13 +200,13 @@ class BinLogParser:
 
     def _apply_scaling(self, values: List, ardu_format: str) -> List:
         """Apply numeric scaling (GPS and altitude values)."""
+        scale_factors: Dict[str, float] = self._scale_factors
         return [
-            (val * SCALE_FACTORS[fmt_char] if fmt_char in SCALE_FACTORS and isinstance(val, (int, float)) else val)
+            (val * scale_factors[fmt_char] if fmt_char in scale_factors and isinstance(val, (int, float)) else val)
             for val, fmt_char in zip(values, ardu_format)
         ]
 
-    def _build_message_as_dict(self, fmt_definition: Dict, values: List) -> Union[Tuple, Dict]:
-
+    def _build_message_as_dict(self, fmt_definition: Dict, values: List) -> Dict:
         message: Dict[str, Union[str, float, int]] = dict(zip(fmt_definition["field_names"], values))
         message["message_type"] = fmt_definition["name"]
 
@@ -248,11 +253,13 @@ class BinLogParser:
                 "message_length": mapped_log[offset + 4],
             }
 
-            print(f"[FMT #{len(self.fmt_definitions):03}] {msg_name} ({msg_type_id}) Fields={len(field_names)}")
+            logger.debug("FMT %-3d %-8s Fields=%s", msg_type_id, msg_name, len(field_names))
             return True
 
         except Exception as err:
-            print(f"[WARN] Bad FMT at {offset}: {err}")  # warn on bad FMT
+            warning = f"Bad FMT at offset {offset}: {err}"
+            self.warnings.append(warning)
+            logger.warning(warning)
             return False
 
     def _extract_field_names(self, raw_bytes: bytes) -> List[str]:
@@ -263,16 +270,11 @@ class BinLogParser:
 
     def _convert_to_struct_format(self, ardu_format: str) -> str:
         """Convert ArduPilot format string to Python struct format."""
-        ardu_to_struct: Dict[str, str] = {
-            "a": "32h", "b": "b", "B": "B", "h": "h", "H": "H",
-            "i": "i", "I": "I", "q": "q", "Q": "Q", "f": "f", "d": "d",
-            "n": "4s", "N": "16s", "Z": "64s", "c": "h", "C": "H",
-            "e": "i", "E": "I", "L": "i", "M": "B",
-        }
-        return "<" + "".join(ardu_to_struct.get(fmt_char, "") for fmt_char in ardu_format)
+        return "<" + "".join(self._ardu_to_struct.get(fmt_char, "") for fmt_char in ardu_format)
 
-    #for testing purposes
+    # for testing purposes
     def build_structs_for_local_use(self) -> None:
         """Build struct objects locally (used when running parser standalone)."""
         for fmt_definition in self.fmt_definitions.values():
             fmt_definition["struct_obj"] = struct.Struct(fmt_definition["struct_fmt"])
+
