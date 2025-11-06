@@ -8,7 +8,9 @@ line_length = 120
 known_first_party = ["gui", "business_logic"]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q --maxfail=0 --tb=short"
+pythonpath = ["."]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

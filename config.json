@@ -4,12 +4,12 @@
     "min_width": 700,
     "min_height": 400,
     "padding": 20
-  },
+    },
 
-  "parser": {
+  "parser_log_view": {
     "progress_update_interval": 500,
     "min_valid_file_size": 512
-  },
+    },
 
   "map": {
     "tile_url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -17,12 +17,37 @@
     "height": 700,
     "marker_max_count": 400,
     "polyline_sample_interval": 10
-  },
+    },
 
   "logging": {
-    "file_name": "flight_viewer.log",
-    "level": "INFO",
-    "dir": "logs",
-    "format": "%(asctime)s | %(levelname)-8s | %(message)s"
-  }
+      "file_name": "flight_viewer.log",
+      "dir": "logs",
+      "level": "INFO",
+      "format": "%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
+      "max_bytes": 5242880,
+      "backup_count": 5
+    },
+
+  "parser": {
+      "round_fields": [
+        "Lat", "Lng", "Alt", "AltMSL", "AltRel", "BarAlt",
+        "Vel", "Spd", "VN", "VE", "VD", "Roll", "Pitch", "Yaw"
+      ],
+      "ardu_to_struct": {
+          "a": "32h", "b": "b", "B": "B", "h": "h", "H": "H",
+          "i": "i", "I": "I", "q": "q", "Q": "Q", "f": "f", "d": "d",
+          "n": "4s", "N": "16s", "Z": "64s", "c": "h", "C": "H",
+          "e": "i", "E": "I", "L": "i", "M": "B"
+      },
+      "scale_factors": {
+          "c": 0.01,
+          "C": 0.01,
+          "e": 0.01,
+          "E": 0.01,
+          "L": 1e-7
+      }
+    }
 }
+
+
+

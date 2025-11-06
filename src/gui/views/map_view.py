@@ -3,7 +3,7 @@ import flet_map as fmap
 from pathlib import Path
 from typing import List, Tuple
 
-from src.utils.logger import logger
+from src.utils.log_config import logger
 from src.utils.config_loader import config
 from src.business_logic.models import FlightPoint
 
